@@ -47,7 +47,8 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
           PODCAST_EMAIL: ${{ vars.PODCAST_EMAIL }}
-          PODCAST_TITLE: ${{ vars.PODCAST_TITLE }}
+          PODCAST_TITLE: ${{ vars.PODCAST_TITLE || 'Години новин' }}
+          WINDOW_MIN: ${{ vars.WINDOW_MIN || '60' }}
 
       # force_orphan: історія гілки не росте, лишається один останній коміт
       - uses: peaceiris/actions-gh-pages@v4
