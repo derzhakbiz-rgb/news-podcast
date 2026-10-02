@@ -1,9 +1,9 @@
 # Поклади цей файл у репозиторій за шляхом: .github/workflows/hourly.yml
-name: hourly-news
+name: news-every-2h
 
 on:
   schedule:
-    - cron: "5 * * * *"   # щогодини на 5-й хвилині (GitHub може запізнюватись)
+    - cron: "5 */2 * * *"   # раз на 2 години (час за UTC; GitHub може запізнюватись)
   workflow_dispatch:       # кнопка ручного запуску для тесту
 
 permissions:
@@ -48,7 +48,8 @@ jobs:
           SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
           PODCAST_EMAIL: ${{ vars.PODCAST_EMAIL }}
           PODCAST_TITLE: ${{ vars.PODCAST_TITLE || 'Години новин' }}
-          WINDOW_MIN: ${{ vars.WINDOW_MIN || '60' }}
+          WINDOW_MIN: ${{ vars.WINDOW_MIN || '120' }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
 
       # force_orphan: історія гілки не росте, лишається один останній коміт
       - uses: peaceiris/actions-gh-pages@v4
