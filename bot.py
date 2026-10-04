@@ -134,7 +134,8 @@ RETRY_DELAYS = [20, 40, 80, 120]  # секунди між повторами п�
 
 
 def _generate(client, prompt: str):
-    """Запит до Gemini з повторами: 503 (перевантаження) і 429 (ліміт) зазвичай тимчасові."""
+    """Запит до Gemini. 503/429 (перевантаження, ліміт) — повтори з паузами; якщо модель
+    так і не відповіла або недоступна (403/404) — переходимо до запасної моделі."""
     models = [GEMINI_MODEL] + ([GEMINI_FALLBACK_MODEL] if GEMINI_FALLBACK_MODEL else [])
     last = None
     for model in models:
@@ -147,12 +148,15 @@ def _generate(client, prompt: str):
                 )
             except (genai_errors.ServerError, genai_errors.ClientError) as e:
                 code = getattr(e, "code", None)
-                if isinstance(e, genai_errors.ClientError) and code != 429:
-                    raise  # 400/403/404 повтором не лікуються
                 last = e
+                if isinstance(e, genai_errors.ClientError) and code != 429:
+                    print(f"{model}: помилка {code}, ця модель недоступна")
+                    break  # повтором не лікується -> наступна модель
                 if attempt < len(RETRY_DELAYS):
                     print(f"{model}: помилка {code}, чекаю {RETRY_DELAYS[attempt]} с і пробую знову")
                     time.sleep(RETRY_DELAYS[attempt])
+                else:
+                    print(f"{model}: не відповідає після {len(RETRY_DELAYS) + 1} спроб")
     raise last
 
 
