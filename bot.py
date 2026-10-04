@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 import edge_tts
 from google import genai
 from google.genai import errors as genai_errors
+from google.genai import types as genai_types
 from pydub import AudioSegment
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -23,6 +24,13 @@ GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "")  # необ�
 WINDOW_MIN = int(os.environ.get("WINDOW_MIN", "120"))
 MAX_POSTS = int(os.environ.get("MAX_POSTS", "40"))
 KEEP_EPISODES = int(os.environ.get("KEEP_EPISODES", "24"))  # 24 випуски = дві доби при запуску раз на 2 години
+TTS_ENGINE = (os.environ.get("TTS_ENGINE") or "gemini").lower()  # gemini | edge
+TTS_MODEL = os.environ.get("TTS_MODEL") or "gemini-2.5-flash-preview-tts"
+GEMINI_VOICES = (os.environ.get("GEMINI_VOICE_A") or "Kore", os.environ.get("GEMINI_VOICE_B") or "Algieba")
+TTS_MAX_BYTES = int(os.environ.get("TTS_MAX_BYTES") or "3500")  # ліміт тексту на один запит озвучення
+TTS_STYLE = os.environ.get("TTS_STYLE") or (
+    "Read this as a calm, clear Ukrainian radio news anchor. Use correct Ukrainian word stress "
+    "and natural pauses between news items:")
 MIN_SENTENCES = int(os.environ.get("MIN_SENTENCES", "1"))  # мінімум речень у пості (1 = одне речення вже ок)
 
 PROMPT = """Ти — ведучий радійних новин УКРАЇНСЬКОЮ мовою.
@@ -179,26 +187,90 @@ def summarize(posts: list[str]) -> list[str]:
 
 
 def pick_voice(now: datetime) -> str:
-    """Чергування дикторів при запуску раз на 2 години: щоразу інший голос."""
+    """Edge TTS: чергування дикторів при запуску раз на 2 години."""
     return "uk-UA-OstapNeural" if (now.hour // 2) % 2 == 0 else "uk-UA-PolinaNeural"
+
+
+def fit_bytes(texts: list[str], limit: int) -> list[str]:
+    """Лишає вступ і кінцівку, а новини додає, поки вкладаються в ліміт байтів."""
+    head, body, tail = texts[0], texts[1:-1], texts[-1]
+    used = len(head.encode()) + len(tail.encode())
+    kept = []
+    for t in body:
+        n = len(t.encode()) + 2
+        if used + n > limit:
+            break
+        kept.append(t)
+        used += n
+    if len(kept) < len(body):
+        print(f"Текст завеликий для одного запиту озвучення: взято {len(kept)} з {len(body)} новин")
+    return [head, *kept, tail]
+
+
+def gemini_tts_episode(texts: list[str], voice: str) -> AudioSegment:
+    """Весь випуск одним запитом до Gemini TTS (бережемо добову квоту)."""
+    script = TTS_STYLE + "\n\n" + "\n\n".join(fit_bytes(texts, TTS_MAX_BYTES))
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    cfg = genai_types.GenerateContentConfig(
+        response_modalities=["AUDIO"],
+        speech_config=genai_types.SpeechConfig(
+            voice_config=genai_types.VoiceConfig(
+                prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(voice_name=voice)
+            )
+        ),
+    )
+    last = None
+    for attempt in range(2):
+        try:
+            resp = client.models.generate_content(model=TTS_MODEL, contents=script, config=cfg)
+            pcm = resp.candidates[0].content.parts[0].inline_data.data
+            if not pcm:
+                raise ValueError("порожня відповідь без аудіо")
+            seg = AudioSegment(data=pcm, sample_width=2, frame_rate=24000, channels=1)
+            if len(seg) < 3000:
+                raise ValueError(f"аудіо підозріло коротке: {len(seg) / 1000:.1f} с")
+            return seg
+        except (genai_errors.ServerError, genai_errors.ClientError) as e:
+            last = e
+            code = getattr(e, "code", None)
+            if isinstance(e, genai_errors.ClientError) and code != 429:
+                raise
+            if attempt == 0:
+                print(f"Gemini TTS: помилка {code}, чекаю 30 с і пробую ще раз")
+                time.sleep(30)
+    raise last
+
+
+async def edge_episode(texts: list[str], voice: str) -> AudioSegment:
+    parts = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for i, text in enumerate(texts):
+            p = os.path.join(tmp, f"{i}.mp3")
+            await edge_tts.Communicate(text, voice).save(p)
+            parts.append(AudioSegment.from_mp3(p))
+    pause = AudioSegment.silent(600)
+    episode = parts[0]
+    for seg in parts[1:]:
+        episode += pause + seg
+    return episode
 
 
 async def make_audio(lines: list[str], out_path: str) -> float:
     now = datetime.now(ZoneInfo("Europe/Kyiv"))
-    voice = pick_voice(now)
-    intro = f"Новини, {now:%H} година."
-    outro = "Це були новини. До зустрічі за дві години!"
-    parts = []
-    with tempfile.TemporaryDirectory() as tmp:
-        for i, text in enumerate([intro, *lines, outro]):
-            p = os.path.join(tmp, f"{i}.mp3")
-            await edge_tts.Communicate(text, voice).save(p)
-            parts.append(AudioSegment.from_mp3(p))
-        pause = AudioSegment.silent(600)
-        episode = parts[0]
-        for seg in parts[1:]:
-            episode += pause + seg
-        episode.export(out_path, format="mp3", bitrate="64k")
+    texts = [f"Новини, {now:%H} година.", *lines, "Це були новини. До зустрічі за дві години!"]
+    episode = None
+    if TTS_ENGINE == "gemini":
+        voice = GEMINI_VOICES[(now.hour // 2) % 2]
+        try:
+            episode = await asyncio.to_thread(gemini_tts_episode, texts, voice)
+            print(f"Озвучення: Gemini TTS ({TTS_MODEL}, голос {voice})")
+        except Exception as e:
+            print("Gemini TTS не вдався, переходжу на Edge TTS:", repr(e)[:300])
+    if episode is None:
+        voice = pick_voice(now)
+        episode = await edge_episode(texts, voice)
+        print(f"Озвучення: Edge TTS (голос {voice})")
+    episode.export(out_path, format="mp3", bitrate="64k")
     return len(episode) / 1000
 
 
