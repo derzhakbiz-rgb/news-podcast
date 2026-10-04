@@ -2,6 +2,7 @@
 import asyncio
 import json
 import re
+import time
 import os
 import sys
 import tempfile
@@ -10,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 import edge_tts
 from google import genai
+from google.genai import errors as genai_errors
 from pydub import AudioSegment
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -17,6 +19,7 @@ from telethon.sessions import StringSession
 import feed
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "")  # необов'язково: запасна модель
 WINDOW_MIN = int(os.environ.get("WINDOW_MIN", "120"))
 MAX_POSTS = int(os.environ.get("MAX_POSTS", "40"))
 KEEP_EPISODES = int(os.environ.get("KEEP_EPISODES", "24"))  # 24 випуски = дві доби при запуску раз на 2 години
@@ -127,15 +130,37 @@ STRICT_NOTE = ("\n\nУВАГА: у попередній відповіді бу�
                "лише українська мова, жодних літер ы, э, ъ, ё.")
 
 
+RETRY_DELAYS = [20, 40, 80, 120]  # секунди між повторами при 503/429
+
+
+def _generate(client, prompt: str):
+    """Запит до Gemini з повторами: 503 (перевантаження) і 429 (ліміт) зазвичай тимчасові."""
+    models = [GEMINI_MODEL] + ([GEMINI_FALLBACK_MODEL] if GEMINI_FALLBACK_MODEL else [])
+    last = None
+    for model in models:
+        for attempt in range(len(RETRY_DELAYS) + 1):
+            try:
+                return client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config={"response_mime_type": "application/json"},
+                )
+            except (genai_errors.ServerError, genai_errors.ClientError) as e:
+                code = getattr(e, "code", None)
+                if isinstance(e, genai_errors.ClientError) and code != 429:
+                    raise  # 400/403/404 повтором не лікуються
+                last = e
+                if attempt < len(RETRY_DELAYS):
+                    print(f"{model}: помилка {code}, чекаю {RETRY_DELAYS[attempt]} с і пробую знову")
+                    time.sleep(RETRY_DELAYS[attempt])
+    raise last
+
+
 def _ask(client, posts: list[str], strict: bool) -> list[str]:
     prompt = PROMPT.format(posts="\n---\n".join(posts))
     if strict:
         prompt += STRICT_NOTE
-    resp = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config={"response_mime_type": "application/json"},
-    )
+    resp = _generate(client, prompt)
     items = json.loads(resp.text)
     return [x.strip() for x in items if isinstance(x, str) and x.strip()]
 
