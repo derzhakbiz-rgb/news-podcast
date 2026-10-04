@@ -51,6 +51,7 @@ jobs:
           PODCAST_TITLE: ${{ vars.PODCAST_TITLE || 'Години новин' }}
           WINDOW_MIN: ${{ vars.WINDOW_MIN || '120' }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
+          GEMINI_FALLBACK_MODEL: ${{ vars.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash' }}
 
       # force_orphan: історія гілки не росте, лишається один останній коміт
       - uses: peaceiris/actions-gh-pages@v4
