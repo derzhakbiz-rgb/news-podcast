@@ -31,6 +31,8 @@ jobs:
           mkdir -p site
           rm -rf site/.git
           cp cover.jpg site/cover.jpg
+          mkdir -p site/panel
+          cp panel.html site/panel/index.html
 
       - uses: actions/setup-python@v5
         with:
@@ -54,6 +56,7 @@ jobs:
           GEMINI_FALLBACK_MODEL: ${{ vars.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash' }}
           TTS_ENGINE: ${{ vars.TTS_ENGINE || 'gemini' }}
           TTS_MODEL: ${{ vars.TTS_MODEL || 'gemini-2.5-flash-preview-tts' }}
+          TTS_SPEED: ${{ vars.TTS_SPEED || '1.08' }}
 
       # force_orphan: історія гілки не росте, лишається один останній коміт
       - uses: peaceiris/actions-gh-pages@v4
