@@ -3,8 +3,8 @@ name: news-every-2h
 
 on:
   schedule:
-    - cron: "5 */2 * * *"   # раз на 2 години (час за UTC; GitHub може запізнюватись)
-  workflow_dispatch:       # кнопка ручного запуску для тесту
+    - cron: "5 * * * *"   # запуск щогодини (UTC); справжня робота лише перед годиною ефіру, див. check
+  workflow_dispatch:       # кнопка ручного запуску (публікує одразу, без очікування)
 
 permissions:
   contents: write
@@ -13,10 +13,32 @@ concurrency:
   group: hourly-news
   cancel-in-progress: false
 
+env:
+  AIR_PARITY: "0"       # 0 = ефір о парних годинах за Києвом (14:00, 16:00...), 1 = о непарних (13:00, 15:00...)
+  PUBLISH_MINUTE: "30"  # о котрій хвилині перед ефіром випуск з'являється в RSS (13:30 для ефіру о 14:00)
+
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    outputs:
+      go: ${{ steps.slot.outputs.go }}
+    steps:
+      - id: slot
+        run: |
+          H=$((10#$(TZ=Europe/Kyiv date +%H)))
+          NEXT=$(( (H + 1) % 24 ))
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ $(( NEXT % 2 )) -eq "$AIR_PARITY" ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Київ зараз ${H} год, найближчий ефір о ${NEXT}:00"
+
+  build:
+    needs: check
+    if: needs.check.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +63,8 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: pip install -r requirements.txt
 
-      - run: python bot.py
+      - id: bot
+        run: python bot.py
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
@@ -58,8 +81,19 @@ jobs:
           TTS_MODEL: ${{ vars.TTS_MODEL || 'gemini-2.5-flash-preview-tts' }}
           TTS_SPEED: ${{ vars.TTS_SPEED || '1.08' }}
 
+      # Випуск готовий заздалегідь; чекаємо потрібної хвилини перед ефіром (лише для запусків за розкладом)
+      - name: Дочекатися часу публікації
+        if: steps.bot.outputs.published == 'true' && github.event_name != 'workflow_dispatch'
+        run: |
+          M=$((10#$(TZ=Europe/Kyiv date +%M)))
+          S=$((10#$(date +%S)))
+          if [ "$M" -lt "$PUBLISH_MINUTE" ]; then
+            sleep $(( (PUBLISH_MINUTE - M) * 60 - S ))
+          fi
+
       # force_orphan: історія гілки не росте, лишається один останній коміт
       - uses: peaceiris/actions-gh-pages@v4
+        if: steps.bot.outputs.published == 'true' || github.event_name == 'workflow_dispatch'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
