@@ -1,5 +1,6 @@
 """Публікація епізоду на GitHub Pages: кладе mp3 у папку сайту, оновлює feed.xml,
 видаляє старі випуски. Тільки стандартна бібліотека."""
+import html
 import json
 import os
 from datetime import datetime
@@ -47,6 +48,31 @@ def build_feed(episodes: list[dict], cfg: dict) -> str:
 """
 
 
+def write_index(site_dir: str, episodes: list[dict], cfg: dict) -> None:
+    """Проста головна сторінка сайту: Telegram-посилання, RSS і список випусків із плеєрами."""
+    e = html.escape
+    tg = cfg.get("telegram_url", "").strip()
+    tg_html = (f'<a class="btn" href="{e(tg)}">Читати новини в Telegram</a>' if tg else "")
+    rows = []
+    for ep in episodes:
+        rows.append(
+            f'<section><h3>{e(ep["title"])}</h3><audio controls preload="none" src="{e(ep["file"])}"></audio>'
+            f'<details><summary>Про що випуск</summary><pre>{e(ep["description"])}</pre></details></section>')
+    credit = ('<p class="muted">Погода: дані <a href="https://open-meteo.com/">Open-Meteo.com</a>.</p>'
+              if cfg.get("weather_credit") else "")
+    page = f"""<!doctype html><html lang="uk"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(cfg['title'])}</title>
+<style>:root{{color-scheme:dark light}}body{{font:16px/1.5 system-ui,sans-serif;max-width:720px;margin:0 auto;padding:20px}}
+section{{border:1px solid #8884;border-radius:12px;padding:12px 16px;margin:12px 0}}h3{{margin:0 0 8px}}
+audio{{width:100%}}.btn{{display:inline-block;padding:10px 16px;border-radius:10px;background:#2a7fff;color:#fff;text-decoration:none;margin-right:8px}}
+pre{{white-space:pre-wrap;font:inherit}}.muted{{opacity:.7;font-size:14px}}</style></head><body>
+<h1>{e(cfg['title'])}</h1><p>{e(cfg['description'])}</p>
+<p>{tg_html}<a class="btn" style="background:#555" href="feed.xml">RSS-стрічка</a></p>
+{"".join(rows)}{credit}</body></html>"""
+    with open(os.path.join(site_dir, "index.html"), "w", encoding="utf-8") as f:
+        f.write(page)
+
+
 def publish(site_dir: str, mp3_path: str, title: str, description: str,
             duration: int, now: datetime, keep: int, cfg: dict) -> None:
     os.makedirs(site_dir, exist_ok=True)
@@ -80,4 +106,5 @@ def publish(site_dir: str, mp3_path: str, title: str, description: str,
         json.dump(episodes, f, ensure_ascii=False, indent=1)
     with open(os.path.join(site_dir, "feed.xml"), "w", encoding="utf-8") as f:
         f.write(build_feed(episodes, cfg))
+    write_index(site_dir, episodes, cfg)
     print(f"У фіді {len(episodes)} випусків")
