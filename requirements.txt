@@ -1,5 +1,5 @@
 telethon
 google-genai
 edge-tts
-pydub
-requests
+numpy
+scipy
