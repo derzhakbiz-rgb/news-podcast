@@ -53,20 +53,23 @@ def opt(key: str, env: str, default):
 ENABLED = opt("enabled", "BOT_ENABLED", True)
 CHANNELS = opt("channels", "TG_CHANNELS", "")
 GEMINI_MODEL = opt("gemini_model", "GEMINI_MODEL", "gemini-3.8-flash")
-GEMINI_FALLBACK_MODEL = opt("gemini_fallback_model", "GEMINI_FALLBACK_MODEL", "")
+GEMINI_FALLBACK_MODEL = opt("gemini_fallback_model", "GEMINI_FALLBACK_MODEL",
+                           "gemini-3.5-flash-lite,gemini-3.6-flash")  # запасні моделі через кому
 WINDOW_MIN = opt("window_min", "WINDOW_MIN", 120)
 MAX_POSTS = opt("max_posts", "MAX_POSTS", 40)
 MIN_SENTENCES = opt("min_sentences", "MIN_SENTENCES", 1)
 KEEP_EPISODES = opt("keep_episodes", "KEEP_EPISODES", 24)
 TTS_ENGINE = opt("tts_engine", "TTS_ENGINE", "gemini").lower()  # gemini | edge
 TTS_MODEL = opt("tts_model", "TTS_MODEL", "gemini-2.5-flash-preview-tts")
-GEMINI_VOICE_F = opt("voice_f", "GEMINI_VOICE_F", "Kore")      # жіночий голос: ведуча
+GEMINI_VOICE_F = opt("voice_f", "GEMINI_VOICE_F", "Despina")  # жіночий голос: ведуча (Smooth)
 GEMINI_VOICE_M = opt("voice_m", "GEMINI_VOICE_M", "Algieba")   # чоловічий голос: ведучий
-NAME_F = opt("name_f", "NAME_F", "Анжеліка")
+NAME_F = opt("name_f", "NAME_F", "Ангеліна")
 NAME_M = opt("name_m", "NAME_M", "Жека")
-TTS_SPEED = opt("speed", "TTS_SPEED", 1.08)
-TTS_MAX_BYTES = opt("tts_max_bytes", "TTS_MAX_BYTES", 3600)  # ліміт тексту на один запит озвучення
+TTS_SPEED = opt("speed", "TTS_SPEED", 1.08)        # швидкість ведучого (чол.)
+SPEED_F = opt("speed_f", "TTS_SPEED_F", 1.0)         # швидкість ведучої: повільніше = оксамитовіше
+TTS_MAX_BYTES = opt("tts_max_bytes", "TTS_MAX_BYTES", 3900)  # ліміт на один запит озвучення (стиль + текст)
 ASSET_DIR = opt("asset_dir", "ASSET_DIR", "assets")
+MP3_BITRATE = opt("mp3_bitrate", "MP3_BITRATE", "192k")  # стерео-mp3, кбіт/с
 BED_ENABLED = opt("bed_enabled", "BED_ENABLED", True)
 BED_UNDER_DB = opt("bed_under_db", "BED_UNDER_DB", -20.0)  # фон під голосом, дБ відносно голосу
 BED_GAP_DB = opt("bed_gap_db", "BED_GAP_DB", -12.0)        # фон у паузах, дБ відносно голосу
@@ -79,16 +82,22 @@ PROMO_TEXT = opt("promo_text", "PROMO_TEXT",
                  "на нашому телеграм-каналі «Кекс-ньюс» за посиланням на сайті.")
 TELEGRAM_URL = opt("telegram_url", "TELEGRAM_URL", "")
 WEATHER_ENABLED = opt("weather_enabled", "WEATHER_ENABLED", True)
+WEATHER_JOKE = opt("weather_joke", "WEATHER_JOKE", True)   # жарт у кінці прогнозу
 WEATHER_WHERE = opt("weather_where", "WEATHER_WHERE", "у Києві")
 WEATHER_LAT = opt("lat", "WEATHER_LAT", 50.45)
 WEATHER_LON = opt("lon", "WEATHER_LON", 30.52)
 EXTRA_INSTRUCTIONS = opt("extra_instructions", "EXTRA_INSTRUCTIONS", "")
 VOICE_DB = -19.0
-TTS_STYLE = opt("tts_style", "TTS_STYLE",
-                "Read as an energetic young host of an independent dance radio news bulletin: lively, "
-                "natural, slightly brisk, correct Ukrainian word stress, a one-second pause between "
-                "items; calm and serious for sad or war news:")
-STATION = "Служба новин Кекс-радіокомпанії"
+STYLE_M = opt("style_m", "TTS_STYLE_M",
+              "Read as an energetic young host of an independent dance radio news bulletin: lively, "
+              "natural, slightly brisk, correct Ukrainian word stress, a one-second pause between "
+              "items; calm and serious for sad or war news:")
+STYLE_F = opt("style_f", "TTS_STYLE_F",
+              "Read as Angelina, a charismatic late-night radio news host with a sultry, seductive voice: "
+              "low, smooth, husky and breathy, intimate and velvety, silky unhurried phrasing with a hint "
+              "of a playful smile, correct Ukrainian word stress, a one-second pause between items; "
+              "for sad or war-related items drop the seductive tone completely and speak calm and serious:")
+STATION = opt("station", "STATION", "Служба новин Кекс-радіокомпані")  # вимовляється дослівно, не відмінюється
 
 PROMPT = """Ти — редактор і ведучий випуску новин молодіжного танцювального незалежного радіо
 Кекс ФМ. Говориш УКРАЇНСЬКОЮ мовою. Нижче пости з новинних каналів (можуть бути російською
@@ -112,7 +121,7 @@ PROMPT = """Ти — редактор і ведучий випуску нови�
 
 ЗАВДАННЯ 2 — привітання (intro). Ведучий(а) цього випуску: {host} ({gender}),
 узгоджуй рід дієслів. Напиши 1–2 короткі речення: назвись іменем і назви
-«{station}» (можна природно відмінювати), привітайся відповідно до часу доби
+«{station}» ДОСЛІВНО (без відмінювання і без змін у написанні), привітайся відповідно до часу доби
 (зараз {part}). Манера цього разу: {vibe}. НЕ називай конкретний час, години, хвилини, дату чи день тижня. Щоразу придумуй нове привітання,
 уникай штампів на кшталт «шановні слухачі». Молодіжний сленг — помірно.
 
@@ -207,34 +216,45 @@ STRICT_NOTE = ("\n\nУВАГА: у попередній відповіді бу�
                "лише українська мова, жодних літер ы, э, ъ, ё.")
 
 
-RETRY_DELAYS = [20, 40, 80, 120]  # секунди між повторами при 503/429
+RETRY_DELAYS = [15, 30, 60]  # секунди між повторами при 503/429 (потім — наступна модель)
+
+
+def _model_chain() -> list[str]:
+    chain = [GEMINI_MODEL]
+    for m in GEMINI_FALLBACK_MODEL.split(","):
+        m = m.strip()
+        if m and m not in chain:
+            chain.append(m)
+    return chain
 
 
 def _generate(client, prompt: str):
-    """Запит до Gemini. 503/429 (перевантаження, ліміт) — повтори з паузами; якщо модель
-    так і не відповіла або недоступна (403/404) — переходимо до запасної моделі."""
-    models = [GEMINI_MODEL] + ([GEMINI_FALLBACK_MODEL] if GEMINI_FALLBACK_MODEL else [])
-    last = None
-    for model in models:
+    """Запит до Gemini. 503/429 (перевантаження, ліміт) — повтори з паузами; якщо модель так і не
+    відповіла або недоступна (403/404) — наступна модель із ланцюжка."""
+    errors = []
+    for model in _model_chain():
         for attempt in range(len(RETRY_DELAYS) + 1):
             try:
-                return client.models.generate_content(
+                resp = client.models.generate_content(
                     model=model,
                     contents=prompt,
                     config={"response_mime_type": "application/json"},
                 )
+                print(f"Gemini: відповіла модель {model}")
+                return resp
             except (genai_errors.ServerError, genai_errors.ClientError) as e:
                 code = getattr(e, "code", None)
-                last = e
                 if isinstance(e, genai_errors.ClientError) and code != 429:
+                    errors.append(f"{model}: {code}")
                     print(f"{model}: помилка {code}, ця модель недоступна")
                     break  # повтором не лікується -> наступна модель
                 if attempt < len(RETRY_DELAYS):
                     print(f"{model}: помилка {code}, чекаю {RETRY_DELAYS[attempt]} с і пробую знову")
                     time.sleep(RETRY_DELAYS[attempt])
                 else:
+                    errors.append(f"{model}: {code} після {len(RETRY_DELAYS) + 1} спроб")
                     print(f"{model}: не відповідає після {len(RETRY_DELAYS) + 1} спроб")
-    raise last
+    raise RuntimeError("Жодна модель Gemini не відповіла: " + "; ".join(errors))
 
 
 VIBES = [
@@ -245,6 +265,15 @@ VIBES = [
     "жартома-урочисто, як у кіноанонсі",
     "зухвало, з посмішкою в голосі",
     "чілово й розслаблено",
+]
+JOKE_ANGLES = [
+    "про одяг і парасольку", "про настрій і плани на вечір", "про каву чи чай", "про котів і сусідів",
+    "про міську маршрутку", "про прогулянку чи пробіжку", "про вибір взуття", "про вихідні та відпочинок",
+]
+FEMALE_VIBES = [
+    "оксамитово й ніжно, з грайливою посмішкою в голосі",
+    "низьким довірливим тоном, ніби шепочеш на вухо",
+    "спокусливо-грайливо, але стильно і без вульгарності",
 ]
 INTRO_FALLBACKS = [
     "Привіт! З вами {host}, {station}. Що відбувається просто зараз — слухайте!",
@@ -260,10 +289,12 @@ OUTRO_FALLBACKS = [
 
 
 def host_for(now: datetime) -> dict:
-    """Чергування ведучих при запуску раз на 2 години: Жека (чол.) / Анжеліка (жін.)."""
+    """Чергування ведучих при запуску раз на 2 години: Жека (чол.) / Ангеліна (жін.)."""
     if (now.hour // 2) % 2 == 0:
-        return {"name": NAME_M, "gender": "чоловік", "gemini": GEMINI_VOICE_M, "edge": "uk-UA-OstapNeural"}
-    return {"name": NAME_F, "gender": "жінка", "gemini": GEMINI_VOICE_F, "edge": "uk-UA-PolinaNeural"}
+        return {"name": NAME_M, "gender": "чоловік", "gemini": GEMINI_VOICE_M, "edge": "uk-UA-OstapNeural",
+                "style": STYLE_M, "speed": TTS_SPEED}
+    return {"name": NAME_F, "gender": "жінка", "gemini": GEMINI_VOICE_F, "edge": "uk-UA-PolinaNeural",
+            "style": STYLE_F, "speed": SPEED_F}
 
 
 def day_part(now: datetime) -> tuple[str, str]:
@@ -285,17 +316,25 @@ def _cap(text: str) -> str:
 def make_context(now: datetime, host: dict, wsum: dict | None = None) -> dict:
     part, wish = day_part(now)
     ctx = {"host": host["name"], "gender": host["gender"], "station": STATION,
-           "time": f"{now:%H:%M}", "part": part, "wish": wish, "vibe": random.choice(VIBES),
+           "time": f"{now:%H:%M}", "part": part, "wish": wish, "vibe": random.choice(VIBES + (FEMALE_VIBES if host["gender"] == "жінка" else [])),
            "keys": '"intro" (рядок), "items" (масив рядків-новин), "outro" (рядок)',
            "weather_task": "", "extra": ""}
     if wsum:
         ctx["keys"] += ', "weather" (рядок)'
+        joke_task = ""
+        if WEATHER_JOKE:
+            ctx["keys"] += ', "weather_joke" (рядок)'
+            joke_task = (
+                "ДОДАТКОВО (weather_joke): ОДНЕ коротке, легке, доброзичливе жартівливе речення саме про цю "
+                f"погоду, підхід: {random.choice(JOKE_ANGLES)}. Без цифр і конкретного часу. Якщо більшість "
+                "новин трагічні чи воєнні або погода небезпечна (гроза, ожеледиця, сильний вітер) — "
+                "залиш weather_joke порожнім рядком.\n")
         ctx["weather_task"] = (
             f"\nЗАВДАННЯ 4 — погода (weather). Прогноз {WEATHER_WHERE}. Напиши 2–3 короткі речення живою "
             "мовою про найближчі години, без конкретного часу (не «о 18:00», а «зараз», «вранці», «вдень», "
             "«ввечері», «вночі»). Використовуй ЛИШЕ числа з даних нижче, записані ЦИФРАМИ; нічого "
             "не вигадуй. Температуру вимовляй зі словами «плюс»/«мінус».\nДані:\n"
-            + weather.prompt_lines(wsum) + "\n")
+            + weather.prompt_lines(wsum) + "\n" + joke_task)
     if EXTRA_INSTRUCTIONS.strip():
         ctx["extra"] = ("\nДодаткові вказівки редактора (виконуй, якщо не суперечать правилам вище): "
                         + EXTRA_INSTRUCTIONS.strip() + "\n")
@@ -313,7 +352,8 @@ def _ask(client, posts: list[str], ctx: dict, strict: bool) -> dict:
     items = [x.strip() for x in obj.get("items", []) if isinstance(x, str) and x.strip()]
     return {"intro": str(obj.get("intro") or "").strip(), "items": items,
             "outro": str(obj.get("outro") or "").strip(),
-            "weather": str(obj.get("weather") or "").strip()}
+            "weather": str(obj.get("weather") or "").strip(),
+            "joke": (str(obj["weather_joke"]).strip() if obj.get("weather_joke") is not None else None)}
 
 
 NO_TIME_RE = re.compile(r"\d|\bгодин|\bхвилин", re.I)  # у привітанні/прощанні часу не називаємо
@@ -321,7 +361,7 @@ NO_TIME_RE = re.compile(r"\d|\bгодин|\bхвилин", re.I)  # у прив�
 
 def valid_intro(text: str, ctx: dict) -> bool:
     low = text.lower()
-    return (bool(text) and ctx["host"].lower() in low and "кекс" in low
+    return (bool(text) and ctx["host"].lower() in low and STATION.lower() in low
             and not looks_russian(text) and not NO_TIME_RE.search(text))
 
 
@@ -356,6 +396,16 @@ def summarize(posts: list[str], ctx: dict, wsum: dict | None = None):
         else:
             print("Прогноз від Gemini не пройшов перевірку, беру шаблон")
             wtext = weather.fallback_text(WEATHER_WHERE, wsum)
+        joke = data["joke"]
+        if WEATHER_JOKE and joke:
+            if (weather.valid_joke(joke) and not RU_LETTERS.search(joke) and not looks_russian(joke)):
+                print(f"Жарт про погоду: {joke}")
+            else:
+                joke = weather.fallback_joke(wsum)
+                print(f"Жарт від Gemini не пройшов перевірку, беру запасний: {joke}")
+            wtext = f"{wtext} {joke}"
+        elif WEATHER_JOKE:
+            print("Жарт про погоду: модель залишила порожнім (пропускаю)")
     return intro, items, outro, wtext
 
 
@@ -376,11 +426,11 @@ def fit_bytes(texts: list[str], kinds: list[str], limit: int):
     return [t for t, k in zip(texts, keep) if k], [x for x, k in zip(kinds, keep) if k]
 
 
-def gemini_tts_pcm(texts: list[str], kinds: list[str], voice: str):
+def gemini_tts_pcm(texts: list[str], kinds: list[str], voice: str, style: str):
     """Весь випуск одним запитом до Gemini TTS (бережемо добову квоту).
     Повертає сирий звук (PCM 24 кГц, 16 біт, моно), озвучені фрази та їхні типи."""
-    used, used_kinds = fit_bytes(texts, kinds, TTS_MAX_BYTES)
-    script = TTS_STYLE + "\n\n" + "\n\n".join(used)
+    used, used_kinds = fit_bytes(texts, kinds, TTS_MAX_BYTES - len(style.encode()) - 4)
+    script = style + "\n\n" + "\n\n".join(used)
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     cfg = genai_types.GenerateContentConfig(
         response_modalities=["AUDIO"],
@@ -411,13 +461,13 @@ def gemini_tts_pcm(texts: list[str], kinds: list[str], voice: str):
     raise last
 
 
-async def edge_parts(texts: list[str], voice: str) -> list:
+async def edge_parts(texts: list[str], voice: str, speed: float) -> list:
     parts = []
     with tempfile.TemporaryDirectory() as tmp:
         for i, text in enumerate(texts):
             p = os.path.join(tmp, f"{i}.mp3")
             await edge_tts.Communicate(text, voice).save(p)
-            parts.append(radio.normalize(radio.decode_file(p, TTS_SPEED), VOICE_DB))
+            parts.append(radio.normalize(radio.decode_file(p, speed), VOICE_DB))
     return parts
 
 
@@ -426,8 +476,8 @@ async def make_audio(texts: list[str], kinds: list[str], host: dict, out_path: s
     parts, used_kinds = None, kinds
     if TTS_ENGINE == "gemini":
         try:
-            pcm, used, used_kinds = await asyncio.to_thread(gemini_tts_pcm, texts, kinds, host["gemini"])
-            voice = radio.normalize(radio.decode_pcm16(pcm, 24000, TTS_SPEED), VOICE_DB)
+            pcm, used, used_kinds = await asyncio.to_thread(gemini_tts_pcm, texts, kinds, host["gemini"], host["style"])
+            voice = radio.normalize(radio.decode_pcm16(pcm, 24000, host["speed"]), VOICE_DB)
             parts, gaps = radio.split_by_pauses(voice, len(used))
             if parts is None:
                 print(f"Озвучення не вдалося розрізати на {len(used)} частин (знайдені паузи, мс: {gaps}); "
@@ -440,7 +490,7 @@ async def make_audio(texts: list[str], kinds: list[str], host: dict, out_path: s
             print("Gemini TTS не вдався, переходжу на Edge TTS:", repr(e)[:300])
             parts, used_kinds = None, kinds
     if parts is None:
-        parts = await edge_parts(texts, host["edge"])
+        parts = await edge_parts(texts, host["edge"], host["speed"])
         print(f"Озвучення: Edge TTS (голос {host['edge']}, ведучий(а) {host['name']})")
     parts = [radio.trim_silence(p) for p in parts]
 
@@ -453,12 +503,14 @@ async def make_audio(texts: list[str], kinds: list[str], host: dict, out_path: s
     closer = random.choice(assets["close"]) if JINGLES_ENABLED and assets["close"] else None
     stings = assets["sting"] if JINGLES_ENABLED else []
     bed = assets["bed"][0] if BED_ENABLED and assets.get("bed") else None
+    wsting = random.choice(assets["weather"]) if JINGLES_ENABLED and assets.get("weather") else None
     print(f"Звук: джингли={'так' if opener is not None else 'ні'}, перебивок={len(stings)}, "
+          f"перебивка погоди={'так' if wsting is not None else 'ні'}, "
           f"фон={'так' if bed is not None else 'ні'} (під голосом {BED_UNDER_DB} дБ, у паузах {BED_GAP_DB} дБ)")
     track = radio.assemble(parts, used_kinds, opener, closer, stings, bed,
                            assets.get("bed_seamless", True), BED_UNDER_DB, BED_GAP_DB,
-                           JINGLE_GAIN_DB, STING_GAIN_DB)
-    radio.export_mp3(track, out_path)
+                           JINGLE_GAIN_DB, STING_GAIN_DB, weather_sting=wsting)
+    radio.export_mp3(track, out_path, MP3_BITRATE)
     return len(track) / radio.SR
 
 
