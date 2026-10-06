@@ -70,14 +70,18 @@ const PROMO='Більш детально ознайомитися з цими т
 const F=[['Источники',[['channels','Каналы-источники (через запятую, например @kanal1,@kanal2; пусто = секрет TG_CHANNELS)','text',''],
 ['window_min','Брать посты за последние N минут','num',120,30,720],['min_sentences','Минимум предложений в посте','num',1,1,5],['max_posts','Максимум постов за раз','num',40,5,80]]],
 ['Голос и ведущие',[['tts_engine','Движок озвучки','sel','gemini',['gemini','edge']],['name_m','Имя ведущего (муж.)','text','Жека'],['voice_m','Голос ведущего (Gemini)','voice','Algieba'],
-['name_f','Имя ведущей (жен.)','text','Анжеліка'],['voice_f','Голос ведущей (Gemini)','voice','Kore'],['speed','Скорость речи','rng',1.08,0.9,1.3,0.01,'×']]],
+['name_f','Имя ведущей (жен.)','text','Ангеліна'],['voice_f','Голос ведущей (Gemini; пример: Despina, Sulafat, Achernar)','voice','Despina'],['speed','Скорость речи Жеки','rng',1.08,0.9,1.3,0.01,'×'],
+['speed_f','Скорость речи Ангелины (меньше = медленнее и «бархатнее»)','rng',1.0,0.85,1.3,0.01,'×'],
+['style_f','Манера голоса Ангелины (по-английски, для Gemini TTS; пусто = встроенная)','area',''],
+['style_m','Манера голоса Жеки (по-английски; пусто = встроенная)','area',''],
+['station','Название службы новостей (говорится дословно, не склоняется)','text','Служба новин Кекс-радіокомпані']]],
 ['Музыка и звуки',[['bed_enabled','Фоновая музыка под выпуском','bool',true],['bed_under_db','Фон под голосом (дБ относительно голоса; меньше = тише)','rng',-20,-40,-6,1,' дБ'],
 ['bed_gap_db','Фон в паузах (дБ)','rng',-12,-30,-3,1,' дБ'],['jingles_enabled','Джинглы и перебивки','bool',true],
 ['jingle_gain_db','Громкость джинглов','rng',0,-12,6,1,' дБ'],['sting_gain_db','Громкость перебивок','rng',0,-12,6,1,' дБ']]],
 ['Вставки',[['promo_enabled','Объявление перед новостями','bool',true],['promo_text','Текст объявления','area',PROMO],['telegram_url','Ссылка на ваш Telegram-канал (для сайта и описаний)','text',''],
-['weather_enabled','Погода в конце выпуска','bool',true],['weather_where','Как сказать «в городе» (напр. у Києві)','text','у Києві'],['lat','Широта','num',50.45,-90,90,'any'],['lon','Долгота','num',30.52,-180,180,'any'],
+['weather_enabled','Погода в конце выпуска','bool',true],['weather_joke','Шутка в конце погоды (каждый раз новая)','bool',true],['weather_where','Как сказать «в городе» (напр. у Києві)','text','у Києві'],['lat','Широта','num',50.45,-90,90,'any'],['lon','Долгота','num',30.52,-180,180,'any'],
 ['extra_instructions','Доп. указания редактору (стиль, что пропускать)','area','']]],
-['Публикация',[['enabled','Выпуски включены (снимите галочку, чтобы поставить на паузу)','bool',true],['keep_episodes','Сколько выпусков хранить','num',24,2,60],
+['Публикация',[['enabled','Выпуски включены (снимите галочку, чтобы поставить на паузу)','bool',true],['keep_episodes','Сколько выпусков хранить','num',24,2,60],['mp3_bitrate','Качество mp3 (стерео; больше = лучше звук, тяжелее файл)','sel','192k',['64k','96k','128k','192k','256k']],
 ['podcast_title','Название подкаста','text','Години новин'],['podcast_desc','Описание подкаста','text','Регулярні випуски коротких новин з гумором.']]]];
 let CFG={},SHA=null;
 function renderForm(){$('#form').innerHTML=F.map(([g,fs])=>`<h2>${g}</h2><div class="card">`+fs.map(([k,l,t,d,a,b,st,u])=>{const v=CFG[k]??d,id='f_'+k;
@@ -95,7 +99,7 @@ async function saveCfg(){const o={};
  try{const r=await api('/contents/config.json',{method:'PUT',body:JSON.stringify({message:'Panel: update config',content:b64(JSON.stringify(o,null,1)),sha:SHA||undefined,branch:S.branch})});
   SHA=r.content.sha;CFG=o;toast('Сохранено ✓')}catch(e){toast('Не сохранилось: '+e.message,1)}}
 
-const K=[['open','Начало выпуска (джингл)'],['close','Конец выпуска (джингл)'],['sting','Перебивки между новостями'],['bed','Фоновая музыка']];
+const K=[['open','Начало выпуска (джингл)'],['close','Конец выпуска (джингл)'],['sting','Перебивки между новостями'],['weather','Особая перебивка перед погодой'],['bed','Фоновая музыка']];
 async function loadSounds(){const L=(await api(`/contents/assets?ref=${S.branch}`,{soft:1}))||[];
  $('#sounds').innerHTML=K.map(([k,t])=>{const fs=L.filter(f=>f.name.startsWith(k));
  return`<div class="card"><h3>${t}</h3>`+(fs.length?fs.map(f=>`<div class="row"><span>${esc(f.name)} <small>${(f.size/1024).toFixed(0)} КБ</small></span><span><button onclick="play('${f.path}')">▶</button> <button class="del" onclick="del('${f.path}','${f.sha}')">✕</button></span></div>`).join(''):'<p class="mut">Ничего не загружено — используется встроенный синтезированный звук.</p>')+
