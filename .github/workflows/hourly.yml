@@ -76,10 +76,11 @@ jobs:
           PODCAST_TITLE: ${{ vars.PODCAST_TITLE || 'Години новин' }}
           WINDOW_MIN: ${{ vars.WINDOW_MIN || '120' }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
-          GEMINI_FALLBACK_MODEL: ${{ vars.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash' }}
+          GEMINI_FALLBACK_MODEL: ${{ vars.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash-lite,gemini-3.6-flash' }}
           TTS_ENGINE: ${{ vars.TTS_ENGINE || 'gemini' }}
           TTS_MODEL: ${{ vars.TTS_MODEL || 'gemini-2.5-flash-preview-tts' }}
           TTS_SPEED: ${{ vars.TTS_SPEED || '1.08' }}
+          TTS_SPEED_F: ${{ vars.TTS_SPEED_F || '1.0' }}
 
       # Випуск готовий заздалегідь; чекаємо потрібної хвилини перед ефіром (лише для запусків за розкладом)
       - name: Дочекатися часу публікації
