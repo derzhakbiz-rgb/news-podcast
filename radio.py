@@ -28,12 +28,21 @@ def _run(cmd, data=None) -> bytes:
     return r.stdout
 
 
-def _tempo(tempo: float) -> list:
-    return ["-af", f"atempo={tempo:.3f}"] if abs(tempo - 1.0) > 0.005 else []
+def _tempo(tempo: float, pitch: float = 0.0) -> list:
+    """Ланцюжок фільтрів ffmpeg: темп і (необов'язково) висота голосу в півтонах (мінус = нижче).
+    Висота змінюється через asetrate, довжина відновлюється atempo; темп множиться окремо."""
+    parts = []
+    if abs(pitch) > 0.01:
+        f = 2 ** (pitch / 12)
+        parts += [f"aresample={SR}", f"asetrate={SR * f:.2f}", f"aresample={SR}"]
+        tempo = tempo / f
+    if abs(tempo - 1.0) > 0.005:
+        parts.append(f"atempo={tempo:.4f}")
+    return ["-af", ",".join(parts)] if parts else []
 
 
-def decode_file(path: str, tempo: float = 1.0, channels: int = 1) -> np.ndarray:
-    out = _run(["ffmpeg", "-v", "error", "-i", path, *_tempo(tempo),
+def decode_file(path: str, tempo: float = 1.0, channels: int = 1, pitch: float = 0.0) -> np.ndarray:
+    out = _run(["ffmpeg", "-v", "error", "-i", path, *_tempo(tempo, pitch),
                 "-f", "f32le", "-ac", str(channels), "-ar", str(SR), "-"])
     x = np.frombuffer(out, dtype="<f4").astype(np.float32)
     if channels == 2:
@@ -41,9 +50,9 @@ def decode_file(path: str, tempo: float = 1.0, channels: int = 1) -> np.ndarray:
     return x
 
 
-def decode_pcm16(pcm: bytes, rate: int = 24000, tempo: float = 1.0) -> np.ndarray:
+def decode_pcm16(pcm: bytes, rate: int = 24000, tempo: float = 1.0, pitch: float = 0.0) -> np.ndarray:
     out = _run(["ffmpeg", "-v", "error", "-f", "s16le", "-ar", str(rate), "-ac", "1", "-i", "pipe:0",
-                *_tempo(tempo), "-f", "f32le", "-ac", "1", "-ar", str(SR), "pipe:1"], data=pcm)
+                *_tempo(tempo, pitch), "-f", "f32le", "-ac", "1", "-ar", str(SR), "pipe:1"], data=pcm)
     return np.frombuffer(out, dtype="<f4").astype(np.float32)
 
 
@@ -554,7 +563,7 @@ def assemble(parts, kinds=None, opener=None, closer=None, stingers=None, bed=Non
         end = cursor + len(p)
         if i < len(parts) - 1:
             use_w = kinds[i + 1] == "weather" and weather_sting is not None
-            if (stingers or use_w) and kinds[i + 1] in ("news", "weather"):
+            if (stingers or use_w) and kinds[i + 1] in ("news", "dj", "weather"):
                 if use_w:
                     st = weather_sting * _db(sting_gain_db)  # особлива перебивка лише перед погодою
                 else:
