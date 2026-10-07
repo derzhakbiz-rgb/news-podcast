@@ -16,7 +16,7 @@ def _text(fragment: str) -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 
-def _clean(text: str, limit: int = 240) -> str:
+def _clean(text: str, limit: int = 180) -> str:
     """Перший абзац із реальним текстом (пропускає картинки, «Continue reading», «The post ... appeared»)."""
     text = re.sub(r"(?is)<script.*?</script>|<style.*?</style>", " ", text or "")
     paras = re.findall(r"(?is)<p[^>]*>(.*?)</p>", text) or [text]
