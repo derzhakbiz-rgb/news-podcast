@@ -51,8 +51,8 @@ def build_feed(episodes: list[dict], cfg: dict) -> str:
 def write_index(site_dir: str, episodes: list[dict], cfg: dict) -> None:
     """Проста головна сторінка сайту: Telegram-посилання, RSS і список випусків із плеєрами."""
     e = html.escape
-    tg = cfg.get("telegram_url", "").strip()
-    tg_html = (f'<a class="btn" href="{e(tg)}">Читати новини в Telegram</a>' if tg else "")
+    donate = cfg.get("donate_url", "").strip()
+    tg_html = (f'<a class="btn" href="{e(donate)}">Підтримати розвиток станції</a>' if donate else "")
     rows = []
     for ep in episodes:
         rows.append(
