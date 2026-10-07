@@ -22,6 +22,12 @@ import feed
 import radio
 import weather
 
+try:  # httpx ставиться разом із google-genai; ловимо обриви з'єднання і таймаути
+    import httpx
+    TRANSPORT_ERRORS = (httpx.TransportError,)
+except ImportError:
+    TRANSPORT_ERRORS = ()
+
 def _load_config(path: str) -> dict:
     try:
         with open(path, encoding="utf-8") as f:
@@ -197,7 +203,7 @@ async def fetch_posts() -> list[str]:
                 if not is_substantial(clean):
                     skipped += 1
                     continue
-                posts.append(clean[:1500])
+                posts.append(clean[:900])
     print(f"Пропущено порожніх/коротких постів: {skipped}, взято: {len(posts)}")
     return posts[:MAX_POSTS]
 
@@ -215,7 +221,30 @@ STRICT_NOTE = ("\n\nУВАГА: у попередній відповіді бу�
                "лише українська мова, жодних літер ы, э, ъ, ё.")
 
 
-RETRY_DELAYS = [15, 30, 60]  # секунди між повторами при 503/429 (потім — наступна модель)
+RETRY_DELAYS = [15, 30, 60]  # секунди між повторами при 503/429/обриві з'єднання (потім — наступна модель)
+
+
+HTTP_TIMEOUT_S = opt("http_timeout", "HTTP_TIMEOUT", 150)  # таймаут одного запиту до Gemini, секунди
+
+
+def _client():
+    try:
+        opts = genai_types.HttpOptions(timeout=int(HTTP_TIMEOUT_S * 1000))
+    except Exception:  # стара версія SDK без цього параметра
+        return genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    return genai.Client(api_key=os.environ["GEMINI_API_KEY"], http_options=opts)
+
+
+def _parse_json(text: str):
+    """JSON із відповіді моделі; терпимо до огорожі ```json і сміття навколо."""
+    t = re.sub(r"^```(?:json)?|```$", "", (text or "").strip(), flags=re.M).strip()
+    try:
+        return json.loads(t)
+    except json.JSONDecodeError:
+        a, b = t.find("{"), t.rfind("}")
+        if a >= 0 and b > a:
+            return json.loads(t[a:b + 1])
+        raise
 
 
 def _model_chain() -> list[str]:
@@ -241,8 +270,8 @@ def _generate(client, prompt: str):
                 )
                 print(f"Gemini: відповіла модель {model}")
                 return resp
-            except (genai_errors.ServerError, genai_errors.ClientError) as e:
-                code = getattr(e, "code", None)
+            except (genai_errors.ServerError, genai_errors.ClientError, *TRANSPORT_ERRORS) as e:
+                code = getattr(e, "code", None) or type(e).__name__
                 if isinstance(e, genai_errors.ClientError) and code != 429:
                     errors.append(f"{model}: {code}")
                     print(f"{model}: помилка {code}, ця модель недоступна")
@@ -340,8 +369,17 @@ def _ask(client, posts: list[str], ctx: dict, strict: bool) -> dict:
     prompt = PROMPT.format(posts="\n---\n".join(posts), **ctx)
     if strict:
         prompt += STRICT_NOTE
-    resp = _generate(client, prompt)
-    obj = json.loads(resp.text)
+    last = None
+    for _ in range(2):
+        resp = _generate(client, prompt)
+        try:
+            obj = _parse_json(resp.text)
+            break
+        except (json.JSONDecodeError, ValueError, AttributeError) as e:
+            last = e
+            print("Відповідь Gemini не схожа на JSON, повторюю запит")
+    else:
+        raise last
     if isinstance(obj, list):  # на випадок, якщо модель повернула лише масив новин
         obj = {"items": obj}
     items = [x.strip() for x in obj.get("items", []) if isinstance(x, str) and x.strip()]
@@ -390,7 +428,7 @@ def valid_weather(text: str, wsum: dict) -> bool:
 
 def summarize(posts: list[str], ctx: dict, wsum: dict | None = None, dj_items: list | None = None):
     """Повертає (привітання, новини, прощання, текст погоди або None, діджей-новини)."""
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    client = _client()
     data = _ask(client, posts, ctx, strict=False)
     texts = [data["intro"], *data["items"], data["outro"], data["weather"], *[d["text"] for d in data["dj"]]]
     if any(looks_russian(x) for x in texts if x):
@@ -450,7 +488,7 @@ def gemini_tts_pcm(texts: list[str], kinds: list[str], voice: str, style: str):
     Повертає сирий звук (PCM 24 кГц, 16 біт, моно), озвучені фрази та їхні типи."""
     used, used_kinds = fit_bytes(texts, kinds, TTS_MAX_BYTES - len(style.encode()) - 4)
     script = style + "\n\n" + "\n\n".join(used)
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    client = _client()
     cfg = genai_types.GenerateContentConfig(
         response_modalities=["AUDIO"],
         speech_config=genai_types.SpeechConfig(
@@ -469,9 +507,9 @@ def gemini_tts_pcm(texts: list[str], kinds: list[str], voice: str, style: str):
             if len(pcm) / (24000 * 2) < 3:
                 raise ValueError(f"аудіо підозріло коротке: {len(pcm) / 48000:.1f} с")
             return pcm, used, used_kinds
-        except (genai_errors.ServerError, genai_errors.ClientError) as e:
+        except (genai_errors.ServerError, genai_errors.ClientError, *TRANSPORT_ERRORS) as e:
             last = e
-            code = getattr(e, "code", None)
+            code = getattr(e, "code", None) or type(e).__name__
             if isinstance(e, genai_errors.ClientError) and code != 429:
                 raise
             if attempt == 0:
@@ -553,7 +591,7 @@ async def main() -> None:
             print("Погода недоступна, випуск буде без неї:", repr(e)[:200])
     dj_items = []
     if DJ_ENABLED and DJ_FEEDS_LIST:
-        dj_items = djnews.recent(DJ_FEEDS_LIST, DJ_DAYS)
+        dj_items = djnews.recent(DJ_FEEDS_LIST, DJ_DAYS, per_feed=8, max_total=16)
         print(f"DJ-матеріалів зібрано: {len(dj_items)}")
     ctx = make_context(air, host, wsum, dj_items or None)
     posts = await fetch_posts()
