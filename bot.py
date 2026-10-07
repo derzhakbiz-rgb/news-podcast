@@ -1,4 +1,4 @@
-"""Регулярний новинний випуск: Telegram -> Gemini -> озвучення + джингли -> GitHub Pages (RSS)."""
+"""Регулярний новинний випуск: Telegram + DJ-стрічки -> Gemini -> озвучення + джингли -> GitHub Pages (RSS)."""
 import asyncio
 import json
 import os
@@ -17,6 +17,7 @@ from google.genai import types as genai_types
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
+import djnews
 import feed
 import radio
 import weather
@@ -61,12 +62,6 @@ MIN_SENTENCES = opt("min_sentences", "MIN_SENTENCES", 1)
 KEEP_EPISODES = opt("keep_episodes", "KEEP_EPISODES", 24)
 TTS_ENGINE = opt("tts_engine", "TTS_ENGINE", "gemini").lower()  # gemini | edge
 TTS_MODEL = opt("tts_model", "TTS_MODEL", "gemini-2.5-flash-preview-tts")
-GEMINI_VOICE_F = opt("voice_f", "GEMINI_VOICE_F", "Despina")  # жіночий голос: ведуча (Smooth)
-GEMINI_VOICE_M = opt("voice_m", "GEMINI_VOICE_M", "Algieba")   # чоловічий голос: ведучий
-NAME_F = opt("name_f", "NAME_F", "Ангеліна")
-NAME_M = opt("name_m", "NAME_M", "Жека")
-TTS_SPEED = opt("speed", "TTS_SPEED", 1.08)        # швидкість ведучого (чол.)
-SPEED_F = opt("speed_f", "TTS_SPEED_F", 1.0)         # швидкість ведучої: повільніше = оксамитовіше
 TTS_MAX_BYTES = opt("tts_max_bytes", "TTS_MAX_BYTES", 3900)  # ліміт на один запит озвучення (стиль + текст)
 ASSET_DIR = opt("asset_dir", "ASSET_DIR", "assets")
 MP3_BITRATE = opt("mp3_bitrate", "MP3_BITRATE", "192k")  # стерео-mp3, кбіт/с
@@ -76,32 +71,42 @@ BED_GAP_DB = opt("bed_gap_db", "BED_GAP_DB", -12.0)        # фон у пауз�
 JINGLES_ENABLED = opt("jingles_enabled", "JINGLES_ENABLED", True)
 JINGLE_GAIN_DB = opt("jingle_gain_db", "JINGLE_GAIN_DB", 0.0)
 STING_GAIN_DB = opt("sting_gain_db", "STING_GAIN_DB", 0.0)
-PROMO_ENABLED = opt("promo_enabled", "PROMO_ENABLED", True)
-PROMO_TEXT = opt("promo_text", "PROMO_TEXT",
-                 "Більш детально ознайомитися з цими та іншими новинами ви можете зараз "
-                 "на нашому телеграм-каналі «Кекс-ньюс» за посиланням на сайті.")
-TELEGRAM_URL = opt("telegram_url", "TELEGRAM_URL", "")
 WEATHER_ENABLED = opt("weather_enabled", "WEATHER_ENABLED", True)
-WEATHER_JOKE = opt("weather_joke", "WEATHER_JOKE", True)   # жарт у кінці прогнозу
 WEATHER_WHERE = opt("weather_where", "WEATHER_WHERE", "у Києві")
 WEATHER_LAT = opt("lat", "WEATHER_LAT", 50.45)
 WEATHER_LON = opt("lon", "WEATHER_LON", 30.52)
+SQUALL_MS = opt("squall_ms", "SQUALL_MS", float(weather.SQUALL_MS))  # пориви, від яких згадуємо шквал
+DJ_ENABLED = opt("dj_enabled", "DJ_ENABLED", True)
+DJ_COUNT = opt("dj_count", "DJ_COUNT", 2)
+DJ_DAYS = opt("dj_days", "DJ_DAYS", 7)
+DJ_FEEDS = opt("dj_feeds", "DJ_FEEDS", "https://edm.com/.rss/full/\nhttps://mixmag.net/rss.xml\nhttps://dancingastronaut.com/feed/")
+DJ_FEEDS_LIST = [u for u in re.split(r"[\s,]+", DJ_FEEDS) if u.startswith("http")]
+DONATE_URL = opt("donate_url", "DONATE_URL", "https://keksfm.kiev.ua")
+DONATE_TEXT = opt("donate_text", "DONATE_TEXT",
+                  "Підтримайте розвиток станції донатом: посилання на нашому сайті, кекс еф ем, крапка, кієв, крапка, ю а.")
 EXTRA_INSTRUCTIONS = opt("extra_instructions", "EXTRA_INSTRUCTIONS", "")
 VOICE_DB = -19.0
-STYLE_M = opt("style_m", "TTS_STYLE_M",
-              "Read as an energetic young host of an independent dance radio news bulletin: lively, "
-              "natural, slightly brisk, correct Ukrainian word stress, a one-second pause between "
-              "items; calm and serious for sad or war news:")
-STYLE_F = opt("style_f", "TTS_STYLE_F",
-              "Read as Angelina, a charismatic late-night radio news host with a sultry, seductive voice: "
-              "low, smooth, husky and breathy, intimate and velvety, silky unhurried phrasing with a hint "
-              "of a playful smile, correct Ukrainian word stress, a one-second pause between items; "
-              "for sad or war-related items drop the seductive tone completely and speak calm and serious:")
+# Ведучі: дві жінки. Високий/низький голос: voice + pitch (півтони, мінус = нижче).
+NAME_A = opt("name_a", "NAME_A", "Ангеліна")
+VOICE_A = opt("voice_a", "VOICE_A", "Despina")
+SPEED_A = opt("speed_a", "SPEED_A", 0.95)
+PITCH_A = opt("pitch_a", "PITCH_A", 0.0)
+STYLE_A = opt("style_a", "STYLE_A",
+              "Read as Angelina, a radio news host with an exceptionally pleasant, captivating, velvety voice: "
+              "warm, smooth and soothing, calm unhurried pace, gentle intimate tone, correct Ukrainian word "
+              "stress, a one-second pause between items; for sad or war-related items speak calmly and seriously:")
+NAME_N = opt("name_n", "NAME_N", "Ніколь Фокс")
+VOICE_N = opt("voice_n", "VOICE_N", "Gacrux")
+SPEED_N = opt("speed_n", "SPEED_N", 0.95)
+PITCH_N = opt("pitch_n", "PITCH_N", -1.5)
+STYLE_N = opt("style_n", "STYLE_N",
+              "Read as Nicole Fox, a radio news host with a low, deep, smooth and captivating female voice: "
+              "warm and composed, slightly husky, calm unhurried pace, confident and soothing, correct Ukrainian "
+              "word stress, a one-second pause between items; for sad or war-related items speak calmly and seriously:")
 STATION = opt("station", "STATION", "Служба новин Кекс-радіокомпані")  # вимовляється дослівно, не відмінюється
 
-PROMPT = """Ти — редактор і ведучий випуску новин молодіжного танцювального незалежного радіо
-Кекс ФМ. Говориш УКРАЇНСЬКОЮ мовою. Нижче пости з новинних каналів (можуть бути російською
-або українською).
+PROMPT = """Ти — редакторка і ведуча випуску новин молодіжного танцювального радіо Кекс ФМ.
+Говориш УКРАЇНСЬКОЮ мовою. Нижче пости з новинних каналів (можуть бути російською або українською).
 
 ЗАВДАННЯ 1 — новини. Для кожної окремої новини напиши ОДНЕ коротке речення українською,
 без вигадування фактів. Дублікати об'єднуй. Пропускай рекламу, заклики підписатися,
@@ -111,25 +116,19 @@ PROMPT = """Ти — редактор і ведучий випуску нови�
 Уся відповідь має бути ЛИШЕ українською: жодного російського слова і жодних літер ы, э, ъ, ё.
 Власні назви пиши за українською нормою (Київ, а не Киев; Харків, а не Харьков).
 
-Тон новин обирай залежно від теми:
-- Якщо новина стосується війни, обстрілів, тривог, жертв, поранених, аварій,
-  катастроф чи будь-якої іншої людської трагедії — подавай її СТРИМАНО і СЕРЙОЗНО,
-  без жодного жарту чи гри слів.
-- Для решти новин (побутові, культурні, спортивні, курйозні, економічні тощо)
-  можна використовувати легку, доброзичливу, жартівливу подачу.
-Якщо сумніваєшся, до якої категорії віднести новину — обирай серйозний тон.
+ПОДАЧА: спокійна, тепла, професійна. БЕЗ жартів, іронії, каламбурів і сленгу — для всіх новин однаково.
+Новини про війну, обстріли, жертв, аварії та іншу трагедію подавай стримано й серйозно.
 
-ЗАВДАННЯ 2 — привітання (intro). Ведучий(а) цього випуску: {host} ({gender}),
-узгоджуй рід дієслів. Напиши 1–2 короткі речення: назвись іменем і назви
-«{station}» ДОСЛІВНО (без відмінювання і без змін у написанні), привітайся відповідно до часу доби
-(зараз {part}). Манера цього разу: {vibe}. НЕ називай конкретний час, години, хвилини, дату чи день тижня. Щоразу придумуй нове привітання,
-уникай штампів на кшталт «шановні слухачі». Молодіжний сленг — помірно.
+ЗАВДАННЯ 2 — привітання (intro). Ведуча цього випуску: {host} (жінка), узгоджуй рід дієслів.
+Напиши 1–2 короткі речення: назвися на ім'я і назви «{station}» ДОСЛІВНО (без відмінювання і без змін
+у написанні), привітайся відповідно до часу доби (зараз {part}). Манера цього разу: {vibe}.
+НЕ називай конкретний час, години, хвилини, дату чи день тижня. Без жартів. Щоразу нове привітання,
+без штампів на кшталт «шановні слухачі».
 
-ЗАВДАННЯ 3 — прощання (outro). 1–2 короткі речення: згадай «Кекс ФМ»,
-обов'язково побажай «{wish}» (саме цими словами), підпишись іменем {host}. Без згадок про конкретний час.
-
-Якщо більшість новин трагічні чи воєнні, привітання і прощання — спокійні, без жартів.
-{weather_task}{extra}
+ЗАВДАННЯ 3 — прощання (outro). 1–2 короткі речення: згадай «Кекс ФМ», обов'язково побажай «{wish}»
+(саме цими словами), підпишись іменем {host}. Без жартів і без конкретного часу. Заклик до донату
+НЕ додавай: він звучить окремо перед прощанням.
+{weather_task}{dj_task}{extra}
 Відповідь — лише JSON-об'єкт з ключами {keys}.
 
 Пости:
@@ -258,28 +257,18 @@ def _generate(client, prompt: str):
 
 
 VIBES = [
-    "бадьоро й заводно, як ведучий ранкового шоу",
-    "по-дружньому і невимушено, ніби пишеш другу",
-    "з легкою іронією",
-    "драйвово, як перед вечіркою",
-    "жартома-урочисто, як у кіноанонсі",
-    "зухвало, з посмішкою в голосі",
-    "чілово й розслаблено",
-]
-JOKE_ANGLES = [
-    "про одяг і парасольку", "про настрій і плани на вечір", "про каву чи чай", "про котів і сусідів",
-    "про міську маршрутку", "про прогулянку чи пробіжку", "про вибір взуття", "про вихідні та відпочинок",
-]
-FEMALE_VIBES = [
-    "оксамитово й ніжно, з грайливою посмішкою в голосі",
-    "низьким довірливим тоном, ніби шепочеш на вухо",
-    "спокусливо-грайливо, але стильно і без вульгарності",
+    "тепло й доброзичливо",
+    "спокійно й упевнено",
+    "м'яко, ніби розмовляєш із добрим знайомим",
+    "урочисто й ніжно",
+    "бадьоро, але стримано",
+    "затишно й неквапливо",
 ]
 INTRO_FALLBACKS = [
-    "Привіт! З вами {host}, {station}. Що відбувається просто зараз — слухайте!",
-    "Це {host}, {station}. Врубаємо новини!",
-    "Агов! {host}, {station}, на зв'язку. Поїхали по новинах.",
-    "{host} на зв'язку, {station}. Найсвіжіше — просто зараз!",
+    "Вітаю! З вами {host}, {station}. Найважливіші новини — просто зараз.",
+    "Це {host}, {station}. Слухайте випуск новин.",
+    "З вами {host}, {station}. Починаємо випуск.",
+    "{host} на зв'язку, {station}. Найсвіжіші новини — далі.",
 ]
 OUTRO_FALLBACKS = [
     "На цьому все. Це був Кекс ФМ, з вами {host}. {Wish}!",
@@ -289,12 +278,12 @@ OUTRO_FALLBACKS = [
 
 
 def host_for(now: datetime) -> dict:
-    """Чергування ведучих при запуску раз на 2 години: Жека (чол.) / Ангеліна (жін.)."""
+    """Чергування двох ведучих при запуску раз на 2 години: Ангеліна / Ніколь Фокс (голос нижчий)."""
     if (now.hour // 2) % 2 == 0:
-        return {"name": NAME_M, "gender": "чоловік", "gemini": GEMINI_VOICE_M, "edge": "uk-UA-OstapNeural",
-                "style": STYLE_M, "speed": TTS_SPEED}
-    return {"name": NAME_F, "gender": "жінка", "gemini": GEMINI_VOICE_F, "edge": "uk-UA-PolinaNeural",
-            "style": STYLE_F, "speed": SPEED_F}
+        return {"name": NAME_A, "gender": "жінка", "gemini": VOICE_A, "edge": "uk-UA-PolinaNeural",
+                "style": STYLE_A, "speed": SPEED_A, "pitch": PITCH_A}
+    return {"name": NAME_N, "gender": "жінка", "gemini": VOICE_N, "edge": "uk-UA-PolinaNeural",
+            "style": STYLE_N, "speed": SPEED_N, "pitch": PITCH_N}
 
 
 def day_part(now: datetime) -> tuple[str, str]:
@@ -313,28 +302,34 @@ def _cap(text: str) -> str:
     return text[:1].upper() + text[1:]
 
 
-def make_context(now: datetime, host: dict, wsum: dict | None = None) -> dict:
+def make_context(now: datetime, host: dict, wsum: dict | None = None, dj_items: list | None = None) -> dict:
     part, wish = day_part(now)
     ctx = {"host": host["name"], "gender": host["gender"], "station": STATION,
-           "time": f"{now:%H:%M}", "part": part, "wish": wish, "vibe": random.choice(VIBES + (FEMALE_VIBES if host["gender"] == "жінка" else [])),
+           "time": f"{now:%H:%M}", "part": part, "wish": wish, "vibe": random.choice(VIBES),
            "keys": '"intro" (рядок), "items" (масив рядків-новин), "outro" (рядок)',
-           "weather_task": "", "extra": ""}
+           "weather_task": "", "dj_task": "", "extra": ""}
     if wsum:
         ctx["keys"] += ', "weather" (рядок)'
-        joke_task = ""
-        if WEATHER_JOKE:
-            ctx["keys"] += ', "weather_joke" (рядок)'
-            joke_task = (
-                "ДОДАТКОВО (weather_joke): ОДНЕ коротке, легке, доброзичливе жартівливе речення саме про цю "
-                f"погоду, підхід: {random.choice(JOKE_ANGLES)}. Без цифр і конкретного часу. Якщо більшість "
-                "новин трагічні чи воєнні або погода небезпечна (гроза, ожеледиця, сильний вітер) — "
-                "залиш weather_joke порожнім рядком.\n")
         ctx["weather_task"] = (
-            f"\nЗАВДАННЯ 4 — погода (weather). Прогноз {WEATHER_WHERE}. Напиши 2–3 короткі речення живою "
+            f"\nЗАВДАННЯ 4 — погода (weather). Прогноз {WEATHER_WHERE}. Напиши 2–3 короткі речення спокійною "
             "мовою про найближчі години, без конкретного часу (не «о 18:00», а «зараз», «вранці», «вдень», "
-            "«ввечері», «вночі»). Використовуй ЛИШЕ числа з даних нижче, записані ЦИФРАМИ; нічого "
-            "не вигадуй. Температуру вимовляй зі словами «плюс»/«мінус».\nДані:\n"
-            + weather.prompt_lines(wsum) + "\n" + joke_task)
+            "«ввечері», «вночі»). Використовуй ЛИШЕ числа з даних нижче, записані ЦИФРАМИ; нічого не вигадуй. "
+            "Температуру вимовляй зі словами «плюс»/«мінус». ПРО ВІТЕР не згадуй, якщо в даних немає "
+            "попередження про шквал чи інше небезпечне явище, і НІКОЛИ не називай швидкість вітру. Без жартів.\n"
+            "Дані:\n" + weather.prompt_lines(wsum) + "\n")
+    if dj_items:
+        ctx["keys"] += ', "dj_items" (масив не більше ніж із двох об\'єктів {"n": номер матеріалу, "text": речення})'
+        ctx["dj_task"] = (
+            "\nЗАВДАННЯ 5 — новини про діджеїв (dj_items). Нижче пронумерований список свіжих матеріалів "
+            "музичних видань (не старші за тиждень; якщо дата невідома — матеріал серед найновіших у стрічці). "
+            f"Обери рівно {DJ_COUNT} найцікавіші новини про ТОПОВИХ світових діджеїв (рівня першої сотні "
+            "рейтингу DJ Mag: Кельвін Гарріс, Девід Гета, Мартін Гаррікс, Тієсто, Армін ван Бюрен, Скрілекс, "
+            "Fred again.. та подібні): релізи, тури, виступи, рекорди, проєкти. Не обирай скандали, судові справи, "
+            "смерті, і загальні новини клубів та індустрії. Кожну виклади ОДНИМ реченням українською, "
+            "використовуючи ЛИШЕ факти із заголовка й анотації, без вигадування й без жартів. Імена пиши за "
+            "усталеною українською практикою, а якщо її немає — латиницею. Першу з двох почни словами "
+            "«У світі діджеїв:». У \"n\" вкажи номер матеріалу зі списку. Якщо підходящих новин немає — "
+            "поверни порожній масив.\nМатеріали:\n" + djnews.prompt_list(dj_items) + "\n")
     if EXTRA_INSTRUCTIONS.strip():
         ctx["extra"] = ("\nДодаткові вказівки редактора (виконуй, якщо не суперечать правилам вище): "
                         + EXTRA_INSTRUCTIONS.strip() + "\n")
@@ -350,18 +345,31 @@ def _ask(client, posts: list[str], ctx: dict, strict: bool) -> dict:
     if isinstance(obj, list):  # на випадок, якщо модель повернула лише масив новин
         obj = {"items": obj}
     items = [x.strip() for x in obj.get("items", []) if isinstance(x, str) and x.strip()]
+    dj = []
+    for e in obj.get("dj_items") or []:
+        if isinstance(e, dict) and isinstance(e.get("text"), str) and e["text"].strip():
+            try:
+                n = int(e.get("n"))
+            except (TypeError, ValueError):
+                n = None
+            dj.append({"n": n, "text": e["text"].strip()})
+        elif isinstance(e, str) and e.strip():
+            dj.append({"n": None, "text": e.strip()})
     return {"intro": str(obj.get("intro") or "").strip(), "items": items,
             "outro": str(obj.get("outro") or "").strip(),
-            "weather": str(obj.get("weather") or "").strip(),
-            "joke": (str(obj["weather_joke"]).strip() if obj.get("weather_joke") is not None else None)}
+            "weather": str(obj.get("weather") or "").strip(), "dj": dj}
 
 
 NO_TIME_RE = re.compile(r"\d|\bгодин|\bхвилин", re.I)  # у привітанні/прощанні часу не називаємо
 
 
+def _first_name(host: str) -> str:
+    return host.split()[0].lower()
+
+
 def valid_intro(text: str, ctx: dict) -> bool:
     low = text.lower()
-    return (bool(text) and ctx["host"].lower() in low and STATION.lower() in low
+    return (bool(text) and _first_name(ctx["host"]) in low and STATION.lower() in low
             and not looks_russian(text) and not NO_TIME_RE.search(text))
 
 
@@ -371,11 +379,20 @@ def valid_outro(text: str, ctx: dict) -> bool:
             and not looks_russian(text) and not NO_TIME_RE.search(text))
 
 
-def summarize(posts: list[str], ctx: dict, wsum: dict | None = None):
-    """Повертає (привітання, новини, прощання, текст погоди або None)."""
+def valid_weather(text: str, wsum: dict) -> bool:
+    """Погода: без часу, без швидкості вітру, про вітер лише при шквалі, числа лише з даних."""
+    if not text or RU_LETTERS.search(text) or looks_russian(text) or weather.mentions_time(text):
+        return False
+    if weather.mentions_wind_speed(text) or (weather.mentions_wind(text) and not wsum["squall"]):
+        return False
+    return weather.numbers_ok(text, wsum)
+
+
+def summarize(posts: list[str], ctx: dict, wsum: dict | None = None, dj_items: list | None = None):
+    """Повертає (привітання, новини, прощання, текст погоди або None, діджей-новини)."""
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     data = _ask(client, posts, ctx, strict=False)
-    texts = [data["intro"], *data["items"], data["outro"], data["weather"]]
+    texts = [data["intro"], *data["items"], data["outro"], data["weather"], *[d["text"] for d in data["dj"]]]
     if any(looks_russian(x) for x in texts if x):
         print("Підозра на російську мову у відповіді, повторюю запит суворіше")
         data = _ask(client, posts, ctx, strict=True)
@@ -389,24 +406,26 @@ def summarize(posts: list[str], ctx: dict, wsum: dict | None = None):
         outro = random.choice(OUTRO_FALLBACKS).format(host=ctx["host"], Wish=_cap(ctx["wish"]))
     wtext = None
     if wsum:
-        wt = data["weather"]
-        if (wt and not RU_LETTERS.search(wt) and not looks_russian(wt) and not weather.mentions_time(wt)
-                and weather.numbers_ok(wt, wsum)):
-            wtext = wt
+        if valid_weather(data["weather"], wsum):
+            wtext = data["weather"]
         else:
             print("Прогноз від Gemini не пройшов перевірку, беру шаблон")
             wtext = weather.fallback_text(WEATHER_WHERE, wsum)
-        joke = data["joke"]
-        if WEATHER_JOKE and joke:
-            if (weather.valid_joke(joke) and not RU_LETTERS.search(joke) and not looks_russian(joke)):
-                print(f"Жарт про погоду: {joke}")
-            else:
-                joke = weather.fallback_joke(wsum)
-                print(f"Жарт від Gemini не пройшов перевірку, беру запасний: {joke}")
-            wtext = f"{wtext} {joke}"
-        elif WEATHER_JOKE:
-            print("Жарт про погоду: модель залишила порожнім (пропускаю)")
-    return intro, items, outro, wtext
+    djs = []
+    for d in data["dj"]:
+        t = d["text"]
+        if len(djs) >= DJ_COUNT or RU_LETTERS.search(t) or looks_russian(t) or len(t) > 320:
+            continue
+        if not djs and not t.lower().startswith("у світі діджеїв"):
+            t = "У світі діджеїв: " + t
+        src = None
+        n = d["n"]
+        if n and dj_items and 1 <= n <= len(dj_items):
+            src = {"source": dj_items[n - 1]["source"], "link": dj_items[n - 1]["link"]}
+        djs.append({"text": t, "source": src})
+    if DJ_ENABLED and dj_items and not djs:
+        print("Діджей-новини: Gemini не знайшов підходящих серед свіжих матеріалів")
+    return intro, items, outro, wtext, djs
 
 
 def fit_bytes(texts: list[str], kinds: list[str], limit: int):
@@ -461,13 +480,13 @@ def gemini_tts_pcm(texts: list[str], kinds: list[str], voice: str, style: str):
     raise last
 
 
-async def edge_parts(texts: list[str], voice: str, speed: float) -> list:
+async def edge_parts(texts: list[str], voice: str, speed: float, pitch: float = 0.0) -> list:
     parts = []
     with tempfile.TemporaryDirectory() as tmp:
         for i, text in enumerate(texts):
             p = os.path.join(tmp, f"{i}.mp3")
             await edge_tts.Communicate(text, voice).save(p)
-            parts.append(radio.normalize(radio.decode_file(p, speed), VOICE_DB))
+            parts.append(radio.normalize(radio.decode_file(p, speed, pitch=pitch), VOICE_DB))
     return parts
 
 
@@ -477,7 +496,7 @@ async def make_audio(texts: list[str], kinds: list[str], host: dict, out_path: s
     if TTS_ENGINE == "gemini":
         try:
             pcm, used, used_kinds = await asyncio.to_thread(gemini_tts_pcm, texts, kinds, host["gemini"], host["style"])
-            voice = radio.normalize(radio.decode_pcm16(pcm, 24000, host["speed"]), VOICE_DB)
+            voice = radio.normalize(radio.decode_pcm16(pcm, 24000, host["speed"], host["pitch"]), VOICE_DB)
             parts, gaps = radio.split_by_pauses(voice, len(used))
             if parts is None:
                 print(f"Озвучення не вдалося розрізати на {len(used)} частин (знайдені паузи, мс: {gaps}); "
@@ -490,7 +509,7 @@ async def make_audio(texts: list[str], kinds: list[str], host: dict, out_path: s
             print("Gemini TTS не вдався, переходжу на Edge TTS:", repr(e)[:300])
             parts, used_kinds = None, kinds
     if parts is None:
-        parts = await edge_parts(texts, host["edge"], host["speed"])
+        parts = await edge_parts(texts, host["edge"], host["speed"], host["pitch"])
         print(f"Озвучення: Edge TTS (голос {host['edge']}, ведучий(а) {host['name']})")
     parts = [radio.trim_silence(p) for p in parts]
 
@@ -524,31 +543,38 @@ async def main() -> None:
         print("Випуски призупинено в панелі керування (enabled = false).")
         return
     now = datetime.now(ZoneInfo("Europe/Kyiv"))
-    air = air_time(now)  # привітання, ведучий і побажання — за часом ефіру, а не збирання
+    air = air_time(now)  # привітання, ведуча і побажання — за часом ефіру, а не збирання
     host = host_for(air)
     wsum = None
     if WEATHER_ENABLED:
         try:
-            wsum = weather.summarize(weather.fetch(WEATHER_LAT, WEATHER_LON))
+            wsum = weather.summarize(weather.fetch(WEATHER_LAT, WEATHER_LON), squall_ms=SQUALL_MS)
         except Exception as e:
             print("Погода недоступна, випуск буде без неї:", repr(e)[:200])
-    ctx = make_context(air, host, wsum)
+    dj_items = []
+    if DJ_ENABLED and DJ_FEEDS_LIST:
+        dj_items = djnews.recent(DJ_FEEDS_LIST, DJ_DAYS)
+        print(f"DJ-матеріалів зібрано: {len(dj_items)}")
+    ctx = make_context(air, host, wsum, dj_items or None)
     posts = await fetch_posts()
     if not posts:
         print("Нових постів немає, пропускаю випуск.")
         return
-    intro, items, outro, wtext = summarize(posts, ctx, wsum)
+    intro, items, outro, wtext, djs = summarize(posts, ctx, wsum, dj_items)
     if not items:
         print("Gemini не повернув новин, пропускаю.")
         return
     texts, kinds = [intro], ["intro"]
-    if PROMO_ENABLED and PROMO_TEXT.strip():
-        texts.append(PROMO_TEXT.strip()); kinds.append("promo")
     texts += items; kinds += ["news"] * len(items)
+    texts += [d["text"] for d in djs]; kinds += ["dj"] * len(djs)  # діджей-новини: в кінці новин, перед погодою
     if wtext:
         texts.append(wtext); kinds.append("weather")
+    if DONATE_TEXT.strip():
+        texts.append(DONATE_TEXT.strip()); kinds.append("donate")
     texts.append(outro); kinds.append("outro")
-    print(f"Ведучий(а): {host['name']}; привітання: {intro}")
+    print(f"Ведуча: {host['name']}; привітання: {intro}")
+    for d in djs:
+        print(f"DJ-новина: {d['text']}  [{(d['source'] or {}).get('source', '?')}]")
     print(f"Погода: {wtext}")
     print(f"Прощання: {outro}")
     out = "episode.mp3"
@@ -557,19 +583,22 @@ async def main() -> None:
     cfg = {
         "base_url": os.environ["SITE_BASE_URL"],
         "title": opt("podcast_title", "PODCAST_TITLE", "Години новин"),
-        "description": opt("podcast_desc", "PODCAST_DESC", "Регулярні випуски коротких новин з гумором."),
+        "description": opt("podcast_desc", "PODCAST_DESC", "Регулярні випуски коротких новин."),
         "email": os.environ["PODCAST_EMAIL"],
-        "telegram_url": TELEGRAM_URL,
+        "donate_url": DONATE_URL,
         "weather_credit": bool(wtext),
     }
-    notes = [f"Ведучий(а): {host['name']}", *[f"• {l}" for l in items]]
+    notes = [f"Ведуча: {host['name']}", *[f"• {l}" for l in items]]
+    for d in djs:
+        tail = f" (джерело: {d['source']['source']}, {d['source']['link']})" if d["source"] else ""
+        notes.append(f"• {d['text']}{tail}")
     if wtext:
         notes.append(f"Погода: {wtext} (дані Open-Meteo.com)")
-    if TELEGRAM_URL:
-        notes.append(f"Більше новин у Telegram: {TELEGRAM_URL}")
+    if DONATE_URL:
+        notes.append(f"Підтримати розвиток станції: {DONATE_URL}")
     feed.publish(os.environ.get("SITE_DIR", "site"), out, title, "\n".join(notes),
                  int(dur), now, KEEP_EPISODES, cfg)
-    print(f"Готово: {len(items)} новин, {dur:.0f} с")
+    print(f"Готово: {len(items)} новин + {len(djs)} діджей-новин, {dur:.0f} с")
     gh_out = os.environ.get("GITHUB_OUTPUT")
     if gh_out:
         with open(gh_out, "a", encoding="utf-8") as f:
