@@ -137,8 +137,7 @@ def fallback_text(where: str, w: dict) -> str:
             else " Істотних опадів не очікується.")
     trange = (f"Далі температура близько {deg(w['tmax'])} градусів." if w["tmin"] == w["tmax"]
               else f"Далі температура від {deg(w['tmin'])} до {deg(w['tmax'])} градусів.")
-    text = (f"Погода {where} на найближчі години: зараз {deg(now['t'])} градусів, {now['desc']}. "
-            f"{trange}{rain}")
+    text = (f"Зараз {deg(now['t'])} градусів, {now['desc']}. {trange}{rain}")  # вступ «про погоду» додає бот
     if w["squall"]:
         text += " Очікується шквальний вітер, будьте обережні."
     if w["hazards"]:
