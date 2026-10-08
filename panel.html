@@ -66,7 +66,6 @@ const api=async(p,o={})=>{const r=await fetch(`https://api.github.com/repos/${S.
  if(r.status===404&&o.soft)return null;if(!r.ok)throw new Error(r.status+': '+(await r.text()).slice(0,200));return r.status===204?{}:r.json()};
 const b64=s=>btoa(unescape(encodeURIComponent(s))),unb64=s=>decodeURIComponent(escape(atob(s.replace(/\s/g,''))));
 
-const DONATE='Підтримайте розвиток станції донатом: посилання на нашому сайті, кекс еф ем, крапка, кієв, крапка, ю а.';
 const PK=['neutral_house','deep_house','tech_house','acid_house','classic_trance','uplifting_trance','night_chill'];
 const F=[['Источники и новости',[['channels','Каналы-источники (через запятую, например @kanal1,@kanal2; пусто = секрет TG_CHANNELS)','text',''],
 ['news_window_min','Окно новостей, минут (180 = последние 3 часа)','num',180,30,720],
@@ -86,7 +85,10 @@ const F=[['Источники и новости',[['channels','Каналы-ис
 ['bed_gap_db','Фон в паузах (дБ)','rng',-12,-30,-3,1,' дБ'],['jingles_enabled','Джинглы и перебивки','bool',true],
 ['jingle_gain_db','Громкость джинглов','rng',0,-12,6,1,' дБ'],['sting_gain_db','Громкость перебивок','rng',0,-12,6,1,' дБ']]],
 ['Вставки',[['weather_enabled','Погода в конце выпуска','bool',true],['weather_where','Как сказать «в городе» (напр. у Києві)','text','у Києві'],['lat','Широта','num',50.45,-90,90,'any'],['lon','Долгота','num',30.52,-180,180,'any'],
-['donate_text','Призыв к донату (так читается вслух)','area',DONATE],['donate_url','Ссылка на сайт/донат (на странице подкаста и в описаниях)','text','https://keksfm.kiev.ua'],
+['weather_lead','Явный вступ к погоде (по одному варианту в строке, выбирается случайный)','area','І про погоду в Києві.\nА тепер про погоду в Києві.\nІ нарешті про погоду в Києві.'],
+['telegram_enabled','В конце выпуска ведущие упоминают наш телеграм-канал','bool',true],['telegram_name','Название телеграм-канала (как произносится)','text','Кекс-ньюс'],
+['donate_enabled','Ненавязчивый призыв поддержать станцию (без адреса сайта, «по ссылке на нашем сайте»)','bool',true],
+['donate_url','Ссылка на сайт/донат (только на странице подкаста и в описаниях, вслух не произносится)','text','https://keksfm.kiev.ua'],
 ['extra_instructions','Доп. указания редактору (стиль, что пропускать)','area','']]],
 ['Публикация',[['enabled','Выпуски включены (снимите галочку, чтобы поставить на паузу)','bool',true],['keep_episodes','Сколько выпусков хранить','num',24,2,60],
 ['mp3_bitrate','Качество mp3 (стерео; больше = лучше звук, тяжелее файл)','sel','192k',['64k','96k','128k','192k','256k']],
