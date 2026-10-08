@@ -14,6 +14,10 @@ def _hms(sec: int) -> str:
 
 def build_feed(episodes: list[dict], cfg: dict) -> str:
     base = cfg["base_url"].rstrip("/")
+    explicit = "true" if cfg.get("explicit") else "false"
+    email = (cfg.get("email") or "").strip()
+    owner = (f"    <itunes:owner>\n      <itunes:name>{escape(cfg['title'])}</itunes:name>\n"
+             f"      <itunes:email>{escape(email)}</itunes:email>\n    </itunes:owner>\n") if email else ""
     items = []
     for e in episodes:
         pub = format_datetime(datetime.fromisoformat(e["pub"]))
@@ -25,7 +29,7 @@ def build_feed(episodes: list[dict], cfg: dict) -> str:
       <guid isPermaLink="false">{escape(e['file'])}</guid>
       <enclosure url="{escape(url)}" length="{e['size']}" type="audio/mpeg"/>
       <itunes:duration>{_hms(e['duration'])}</itunes:duration>
-      <itunes:explicit>false</itunes:explicit>
+      <itunes:explicit>{explicit}</itunes:explicit>
     </item>""")
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
@@ -35,13 +39,9 @@ def build_feed(episodes: list[dict], cfg: dict) -> str:
     <description>{escape(cfg['description'])}</description>
     <language>uk</language>
     <itunes:author>{escape(cfg['title'])}</itunes:author>
-    <itunes:owner>
-      <itunes:name>{escape(cfg['title'])}</itunes:name>
-      <itunes:email>{escape(cfg['email'])}</itunes:email>
-    </itunes:owner>
-    <itunes:image href="{escape(base)}/cover.jpg"/>
+{owner}    <itunes:image href="{escape(base)}/cover.jpg"/>
     <itunes:category text="News"/>
-    <itunes:explicit>false</itunes:explicit>
+    <itunes:explicit>{explicit}</itunes:explicit>
 {chr(10).join(items)}
   </channel>
 </rss>
@@ -73,8 +73,19 @@ pre{{white-space:pre-wrap;font:inherit}}.muted{{opacity:.7;font-size:14px}}</sty
         f.write(page)
 
 
+def last_meta(site_dir: str) -> dict:
+    """Службові дані останнього випуску (ведуча, які пости вже прозвучали), якщо вони є."""
+    try:
+        with open(os.path.join(site_dir, "episodes.json"), encoding="utf-8") as fh:
+            eps = json.load(fh)
+        eps.sort(key=lambda e: e["pub"], reverse=True)
+        return dict(eps[0].get("meta") or {}) if eps else {}
+    except (OSError, ValueError, KeyError, IndexError):
+        return {}
+
+
 def publish(site_dir: str, mp3_path: str, title: str, description: str,
-            duration: int, now: datetime, keep: int, cfg: dict) -> None:
+            duration: int, now: datetime, keep: int, cfg: dict, meta: dict | None = None) -> None:
     os.makedirs(site_dir, exist_ok=True)
     manifest_path = os.path.join(site_dir, "episodes.json")
     episodes: list[dict] = []
@@ -91,7 +102,7 @@ def publish(site_dir: str, mp3_path: str, title: str, description: str,
     episodes.append({
         "file": fname, "title": title, "description": description,
         "pub": now.isoformat(), "duration": duration,
-        "size": os.path.getsize(dest),
+        "size": os.path.getsize(dest), "meta": meta or {},
     })
     episodes.sort(key=lambda e: e["pub"], reverse=True)
 
