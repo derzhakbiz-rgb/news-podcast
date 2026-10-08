@@ -479,10 +479,11 @@ def _db(v):
     return 10 ** (v / 20)
 
 
-def load_assets(asset_dir: str = "assets") -> dict:
-    """Файли з assets/ мають пріоритет (open*, close*, sting*, bed*); чого бракує — синтезується.
+def load_assets(asset_dir: str = "assets", pack: str | None = None) -> dict:
+    """Звуки для випуску. Пріоритет: власні файли в assets/ (open*, close*, sting*, weather*, bed*),
+    далі звуковий пакет `pack` (див. soundpacks.py), далі вбудований синтез.
     Повертає також bed_seamless: True, якщо фон — наша безшовна петля."""
-    synth, out = None, {}
+    synth, out, pk = None, {}, None
     for kind, target in (("open", -21), ("close", -21), ("sting", -23), ("weather", -22), ("bed", -19)):
         files = []
         for ext in ("mp3", "wav", "ogg", "m4a"):
@@ -494,11 +495,21 @@ def load_assets(asset_dir: str = "assets") -> dict:
             out[kind] = [normalize(decode_file(f, channels=2), target) for f in files]
             if kind == "bed":
                 out["bed_seamless"] = False
+            continue
+        if pack and pk is None:
+            try:
+                import soundpacks
+                pk = soundpacks.build_pack(pack)
+            except Exception as e:  # пакет не зібрався — лишаємось на вбудованому синтезі
+                print(f"Звуковий пакет «{pack}» не зібрався ({repr(e)[:120]}), беру вбудований")
+                pk = False
+        if pk:
+            out[kind] = [normalize(x, target) for x in pk[kind]]
         else:
             synth = synth or synth_assets()
             out[kind] = synth[kind]
-            if kind == "bed":
-                out["bed_seamless"] = True
+        if kind == "bed":
+            out["bed_seamless"] = True
     return out
 
 
@@ -563,7 +574,7 @@ def assemble(parts, kinds=None, opener=None, closer=None, stingers=None, bed=Non
         end = cursor + len(p)
         if i < len(parts) - 1:
             use_w = kinds[i + 1] == "weather" and weather_sting is not None
-            if (stingers or use_w) and kinds[i + 1] in ("news", "dj", "weather"):
+            if (stingers or use_w) and kinds[i + 1] in ("news", "weather"):
                 if use_w:
                     st = weather_sting * _db(sting_gain_db)  # особлива перебивка лише перед погодою
                 else:
