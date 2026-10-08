@@ -91,8 +91,12 @@ WEATHER_LAT = opt("lat", "WEATHER_LAT", 50.45)
 WEATHER_LON = opt("lon", "WEATHER_LON", 30.52)
 SQUALL_MS = opt("squall_ms", "SQUALL_MS", float(weather.SQUALL_MS))  # пориви, від яких згадуємо шквал
 DONATE_URL = opt("donate_url", "DONATE_URL", "https://keksfm.kiev.ua")
-DONATE_TEXT = opt("donate_text", "DONATE_TEXT",
-                  "Підтримайте розвиток станції донатом: посилання на нашому сайті, кекс еф ем, крапка, кієв, крапка, ю а.")
+DONATE_ENABLED = opt("donate_enabled", "DONATE_ENABLED", True)        # ненав'язливий заклик у кінці випуску
+TELEGRAM_ENABLED = opt("telegram_enabled", "TELEGRAM_ENABLED", True)  # згадка телеграм-каналу в мові ведучих
+TELEGRAM_NAME = opt("telegram_name", "TELEGRAM_NAME", "Кекс-ньюс")
+WEATHER_LEAD = opt("weather_lead", "WEATHER_LEAD",
+                   "І про погоду в Києві.\nА тепер про погоду в Києві.\nІ нарешті про погоду в Києві.")
+WEATHER_LEADS = [x.strip() for x in WEATHER_LEAD.splitlines() if x.strip()]  # явний вступ до погоди (по одному в рядку)
 FEED_EXPLICIT = opt("rss_explicit", "RSS_EXPLICIT", False)  # позначка «explicit» у RSS: за замовчуванням вимкнена
 EXTRA_INSTRUCTIONS = opt("extra_instructions", "EXTRA_INSTRUCTIONS", "")
 VOICE_DB = -19.0
@@ -139,7 +143,7 @@ PROMPT = """Ти — редакторка і ведуча випуску нов�
 ЗАВДАННЯ 3 — прощання (outro). 1–2 короткі речення: згадай «Кекс ФМ», обов'язково побажай «{wish}»
 (саме цими словами), назви себе у формі «З вами була {host}» (ніколи не «мене звати»). Без жартів
 і без конкретного часу. Заклик до донату НЕ додавай: він звучить окремо перед прощанням.
-{weather_task}{extra}
+{weather_task}{closing_task}{extra}
 Відповідь — лише JSON-об'єкт з ключами {keys}.
 
 Пости:
@@ -372,16 +376,32 @@ def make_context(now: datetime, host: dict, wsum: dict | None = None) -> dict:
     ctx = {"host": host["name"], "gender": host["gender"], "station": STATION,
            "time": f"{now:%H:%M}", "part": part, "wish": wish, "vibe": random.choice(VIBES),
            "keys": '"intro" (рядок), "items" (масив рядків-новин), "outro" (рядок)',
-           "weather_task": "", "extra": ""}
+           "weather_task": "", "closing_task": "", "extra": ""}
     if wsum:
         ctx["keys"] += ', "weather" (рядок)'
         ctx["weather_task"] = (
             f"\nЗАВДАННЯ 4 — погода (weather). Прогноз {WEATHER_WHERE}. Напиши 2–3 короткі речення спокійною "
             "мовою про найближчі години, без конкретного часу (не «о 18:00», а «зараз», «вранці», «вдень», "
-            "«ввечері», «вночі»). Використовуй ЛИШЕ числа з даних нижче, записані ЦИФРАМИ; нічого не вигадуй. "
+            "«ввечері», «вночі»). БЕЗ вступу про те, що це погода: вступну фразу додамо ми, починай одразу з суті. Використовуй ЛИШЕ числа з даних нижче, записані ЦИФРАМИ; нічого не вигадуй. "
             "Температуру вимовляй зі словами «плюс»/«мінус». ПРО ВІТЕР не згадуй, якщо в даних немає "
             "попередження про шквал чи інше небезпечне явище, і НІКОЛИ не називай швидкість вітру. Без жартів.\n"
             "Дані:\n" + weather.prompt_lines(wsum) + "\n")
+    n = 5 if wsum else 4
+    if TELEGRAM_ENABLED:
+        ctx["keys"] += ', "telegram" (рядок)'
+        ctx["closing_task"] += (
+            f"\nЗАВДАННЯ {n} — телеграм-канал (telegram). 1–2 короткі речення наприкінці випуску: нагадай, що "
+            f"більше новин — у нашому телеграм-каналі «{TELEGRAM_NAME}», а посилання — на нашому сайті. "
+            "Адресу не вимовляй. Без жартів, без конкретного часу.\n")
+        n += 1
+    if DONATE_ENABLED:
+        ctx["keys"] += ', "donate" (рядок)'
+        ctx["closing_task"] += (
+            f"\nЗАВДАННЯ {n} — донат (donate). 1–2 короткі МАКСИМАЛЬНО ненав'язливі речення: м'яко запропонуй "
+            "підтримати станцію, використавши ОДИН зі зворотів «на розвиток станції», «на чашечку кави» або "
+            "«у подяку за те, що ми є». Обов'язково скажи, що це можна зробити «за посиланням на нашому сайті». "
+            "НІКОЛИ не вимовляй адресу сайту, літери й крапки доменного імені. Без тиску й слів «терміново», "
+            "«обов'язково». Без жартів, без конкретного часу.\n")
     if EXTRA_INSTRUCTIONS.strip():
         ctx["extra"] = ("\nДодаткові вказівки редактора (виконуй, якщо не суперечать правилам вище): "
                         + EXTRA_INSTRUCTIONS.strip() + "\n")
@@ -408,7 +428,9 @@ def _ask(client, posts: list[str], ctx: dict, strict: bool) -> dict:
     items = [x.strip() for x in obj.get("items", []) if isinstance(x, str) and x.strip()]
     return {"intro": str(obj.get("intro") or "").strip(), "items": items,
             "outro": str(obj.get("outro") or "").strip(),
-            "weather": str(obj.get("weather") or "").strip()}
+            "weather": str(obj.get("weather") or "").strip(),
+            "telegram": str(obj.get("telegram") or "").strip(),
+            "donate": str(obj.get("donate") or "").strip()}
 
 
 NO_TIME_RE = re.compile(r"\d|\bгодин|\bхвилин", re.I)  # у привітанні/прощанні часу не називаємо
@@ -440,11 +462,36 @@ def valid_weather(text: str, wsum: dict) -> bool:
     return weather.numbers_ok(text, wsum)
 
 
+NO_ADDR_RE = re.compile(r"keksfm|kiev\.ua|\.ua\b|https?:|www\.|крапк", re.I)  # адресу сайту в ефірі не називаємо
+DONATE_LINK_RE = re.compile(r"за\s+посиланням\s+на\s+нашому\s+сайті", re.I)
+DONATE_IDIOM_RE = re.compile(r"на\s+розвиток|на\s+(?:чашечк|чашк)\w*\s+кав\w*|(?:у|в)\s+подяку\s+за\s+те,?\s+що\s+ми\s+є", re.I)
+DONATE_FALLBACKS = [
+    "Якщо захочете підтримати нас на розвиток станції, це можна зробити за посиланням на нашому сайті.",
+    "А якщо хочете пригостити нас на чашечку кави, це можна зробити за посиланням на нашому сайті.",
+    "Будемо вдячні за допомогу на розвиток Кекс ФМ: за посиланням на нашому сайті.",
+    "А якщо ми стали вам у пригоді, можна підтримати нас у подяку за те, що ми є, за посиланням на нашому сайті.",
+]
+TELEGRAM_FALLBACKS = [
+    "Більше новин читайте в нашому телеграм-каналі «{name}», посилання — на нашому сайті.",
+    "Усі подробиці — в нашому телеграм-каналі «{name}», посилання шукайте на нашому сайті.",
+]
+
+
+def valid_donate(text: str) -> bool:
+    return (bool(text) and len(text) <= 260 and bool(DONATE_LINK_RE.search(text)) and bool(DONATE_IDIOM_RE.search(text))
+            and not NO_ADDR_RE.search(text) and not has_russian(text) and not NO_TIME_RE.search(text))
+
+
+def valid_telegram(text: str) -> bool:
+    return (bool(text) and len(text) <= 240 and "телеграм" in text.lower() and TELEGRAM_NAME.lower() in text.lower()
+            and not NO_ADDR_RE.search(text) and not has_russian(text) and not NO_TIME_RE.search(text))
+
+
 def summarize(posts: list[str], ctx: dict, wsum: dict | None = None):
-    """Повертає (привітання, новини, прощання, текст погоди або None)."""
+    """Повертає (привітання, новини, прощання, текст погоди з вступом або None, телеграм, донат)."""
     client = _client()
     data = _ask(client, posts, ctx, strict=False)
-    own = [data["intro"], data["outro"], data["weather"]]
+    own = [data["intro"], data["outro"], data["weather"], data["telegram"], data["donate"]]
     if any(looks_russian(x) for x in data["items"]) or any(has_russian(x) for x in own if x):
         print("Підозра на російську мову у відповіді, повторюю запит суворіше")
         data = _ask(client, posts, ctx, strict=True)
@@ -463,7 +510,21 @@ def summarize(posts: list[str], ctx: dict, wsum: dict | None = None):
         else:
             print("Прогноз від Gemini не пройшов перевірку, беру шаблон")
             wtext = weather.fallback_text(WEATHER_WHERE, wsum)
-    return intro, items, outro, wtext
+        if WEATHER_LEADS:  # погоду оголошуємо явно: «І про погоду в Києві.»
+            wtext = f"{random.choice(WEATHER_LEADS)} {wtext}"
+    tg = None
+    if TELEGRAM_ENABLED:
+        tg = data["telegram"]
+        if not valid_telegram(tg):
+            print("Згадка телеграм-каналу не пройшла перевірку, беру запасну")
+            tg = random.choice(TELEGRAM_FALLBACKS).format(name=TELEGRAM_NAME)
+    dn = None
+    if DONATE_ENABLED:
+        dn = data["donate"]
+        if not valid_donate(dn):
+            print("Заклик до донату не пройшов перевірку, беру запасний")
+            dn = random.choice(DONATE_FALLBACKS)
+    return intro, items, outro, wtext, tg, dn
 
 
 def fit_bytes(texts: list[str], kinds: list[str], limit: int):
@@ -599,7 +660,7 @@ async def main() -> None:
         print("У каналах немає жодних придатних постів, пропускаю випуск.")
         return
     ctx = make_context(air, host, wsum)
-    intro, items, outro, wtext = summarize(posts, ctx, wsum)
+    intro, items, outro, wtext, tg, dn = summarize(posts, ctx, wsum)
     if not items:
         print("Gemini не повернув новин, пропускаю.")
         return
@@ -607,12 +668,16 @@ async def main() -> None:
     texts += items; kinds += ["news"] * len(items)
     if wtext:
         texts.append(wtext); kinds.append("weather")
-    if DONATE_TEXT.strip():
-        texts.append(DONATE_TEXT.strip()); kinds.append("donate")
+    if tg:  # наприкінці випуску, у мові ведучих: телеграм-канал, потім ненав'язливий донат, потім прощання
+        texts.append(tg); kinds.append("tg")
+    if dn:
+        texts.append(dn); kinds.append("donate")
     texts.append(outro); kinds.append("outro")
     print(f"Ведуча: {host['name']} (попередній випуск вела: №{last.get('host', '—')}); пакет звуків: {pack}")
     print(f"Привітання: {intro}")
     print(f"Погода: {wtext}")
+    print(f"Телеграм: {tg}")
+    print(f"Донат: {dn}")
     print(f"Прощання: {outro}")
     out = "episode.mp3"
     dur = await make_audio(texts, kinds, host, out, pack)
