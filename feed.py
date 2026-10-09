@@ -84,8 +84,20 @@ def last_meta(site_dir: str) -> dict:
         return {}
 
 
+def latest_episode(site_dir: str) -> dict | None:
+    """Останній опублікований випуск (запис із episodes.json) або None."""
+    try:
+        with open(os.path.join(site_dir, "episodes.json"), encoding="utf-8") as fh:
+            eps = json.load(fh)
+        eps = [e for e in eps if os.path.exists(os.path.join(site_dir, e["file"]))]
+        eps.sort(key=lambda e: e["pub"], reverse=True)
+        return eps[0] if eps else None
+    except (OSError, ValueError, KeyError):
+        return None
+
+
 def publish(site_dir: str, mp3_path: str, title: str, description: str,
-            duration: int, now: datetime, keep: int, cfg: dict, meta: dict | None = None) -> None:
+            duration: int, now: datetime, keep: int, cfg: dict, meta: dict | None = None, name_suffix: str = "") -> None:
     os.makedirs(site_dir, exist_ok=True)
     manifest_path = os.path.join(site_dir, "episodes.json")
     episodes: list[dict] = []
@@ -93,10 +105,11 @@ def publish(site_dir: str, mp3_path: str, title: str, description: str,
         with open(manifest_path, encoding="utf-8") as f:
             episodes = json.load(f)
 
-    fname = f"ep_{now:%Y%m%d_%H}.mp3"
+    fname = f"ep_{now:%Y%m%d_%H}{name_suffix}.mp3"
     dest = os.path.join(site_dir, fname)
-    with open(mp3_path, "rb") as src, open(dest, "wb") as dst:
-        dst.write(src.read())
+    if os.path.abspath(mp3_path) != os.path.abspath(dest):  # файл-джерело може бути тим самим (повтор)
+        with open(mp3_path, "rb") as src, open(dest, "wb") as dst:
+            dst.write(src.read())
 
     episodes = [e for e in episodes if e["file"] != fname]  # повторний запуск тієї ж години
     episodes.append({
