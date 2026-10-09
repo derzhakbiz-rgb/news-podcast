@@ -89,6 +89,18 @@ PACK_BY_PART = {
     "вечір": opt("pack_evening", "PACK_EVENING", "deep_house"),
     "ніч": opt("pack_night", "PACK_NIGHT", "night_chill"),
 }
+STAY_ENABLED = opt("stay_enabled", "STAY_ENABLED", True)  # після привітання: «не перемикайтесь, новини короткі»
+STAY_LINES = [x.strip() for x in opt("stay_lines", "STAY_LINES", "\n".join([
+    "Не перемикайтесь: новини короткі, трохи більше хвилини, і дуже скоро знову буде ваша улюблена музика.",
+    "Випуск короткий, трохи більше хвилини, тож залишайтеся з нами: дуже скоро знову буде ваша улюблена музика.",
+    "Залишайтеся на хвилинку: новини короткі, а далі знову ваша улюблена музика.",
+    "Новини коротко, трохи більше хвилини. Не перемикайтесь: дуже скоро знову буде ваша улюблена музика.",
+    "Не надовго: трохи більше хвилини новин, а дуже скоро знову прозвучить ваша улюблена музика. Не перемикайтесь.",
+    "Просимо не перемикатися: новини займуть трохи більше хвилини, і дуже скоро знову буде ваша улюблена музика.",
+])).splitlines() if x.strip()]
+PAUSE_BEFORE_MS = opt("pause_before_ms", "PAUSE_BEFORE_MS", 450)  # тиша після новини перед перебивкою
+PAUSE_AFTER_MS = opt("pause_after_ms", "PAUSE_AFTER_MS", 250)     # тиша після перебивки перед наступною новиною
+PAUSE_PLAIN_MS = opt("pause_plain_ms", "PAUSE_PLAIN_MS", 700)     # пауза там, де перебивки немає
 WEATHER_ENABLED = opt("weather_enabled", "WEATHER_ENABLED", True)
 WEATHER_WHERE = opt("weather_where", "WEATHER_WHERE", "у Києві")
 WEATHER_LAT = opt("lat", "WEATHER_LAT", 50.45)
@@ -109,19 +121,20 @@ STATION_SPOKEN = opt("station_spoken", "STATION_SPOKEN", "Служба нови�
 _STRESS = "(a capitalized vowel in the middle of a word marks the stressed vowel)"
 _SERIOUS = ("Our country is at war: for attacks, explosions, casualties and deaths speak gravely, slowly, with a "
             "heavy restrained tone. Crisp Ukrainian diction, pronounce every ending in full, correct word stress "
-            + _STRESS + ", a one-second pause between items:")
-NAME_1 = opt("h1_name", "H1_NAME", "Ангеліна")
-VOICE_1 = opt("h1_voice", "H1_VOICE", "Leda")  # Youthful — молодий голос
-SPEED_1 = opt("h1_speed", "H1_SPEED", 0.95)
-PITCH_1 = opt("h1_pitch", "H1_PITCH", 1.5)     # півтони: плюс = вище й молодше
-STYLE_1 = opt("h1_style", "H1_STYLE",
-              "Read as Angelina, a 19-year-old woman, radio news host: a young, feminine, high, bright and ringing "
-              "voice, but a SERIOUS, composed, firm newsroom delivery, no smiling and no softness. " + _SERIOUS)
-NAME_2 = opt("h2_name", "H2_NAME", "Лера")
-VOICE_2 = opt("h2_voice", "H2_VOICE", "Kore")  # Firm — рівний, зібраний голос
-SPEED_2 = opt("h2_speed", "H2_SPEED", 0.95)
-PITCH_2 = opt("h2_pitch", "H2_PITCH", 0.0)
-STYLE_2 = opt("h2_style", "H2_STYLE",
+            + _STRESS + ", and leave a long, clear pause of about two seconds after each separate item:")
+NAME_1 = opt("host1_name", "HOST1_NAME", "Ангеліна")
+VOICE_1 = opt("host1_voice", "HOST1_VOICE", "Zephyr")  # тимчасово; остаточний вибір — за прослуховуванням voice_samples.py
+SPEED_1 = opt("host1_speed", "HOST1_SPEED", 0.95)
+PITCH_1 = opt("host1_pitch", "HOST1_PITCH", 0.0)     # півтони: підвищення робить голос дитячим, тому за замовчуванням 0
+STYLE_1 = opt("host1_style", "HOST1_STYLE",
+              "Read as Angelina, a 19-year-old young woman, radio news host: a feminine, clear, bright voice in a "
+              "higher female register, but mature, confident and NOT childish, not a girl's voice; a SERIOUS, "
+              "composed, firm newsroom delivery, no smiling and no softness. " + _SERIOUS)
+NAME_2 = opt("host2_name", "HOST2_NAME", "Лера")
+VOICE_2 = opt("host2_voice", "HOST2_VOICE", "Kore")  # Firm — рівний, зібраний голос
+SPEED_2 = opt("host2_speed", "HOST2_SPEED", 0.95)
+PITCH_2 = opt("host2_pitch", "HOST2_PITCH", 0.0)
+STYLE_2 = opt("host2_style", "HOST2_STYLE",
               "Read as Lera, a radio news host with a natural, beautiful, clear voice, but a SERIOUS, composed, firm "
               "newsroom delivery, no smiling and no softness. " + _SERIOUS)
 STATION = opt("station", "STATION", "Служба новин Кекс-радіокомпані")  # у тексті; вимовляється як STATION_SPOKEN
@@ -655,7 +668,8 @@ async def make_audio(texts: list[str], kinds: list[str], host: dict, out_path: s
           f"фон={'так' if bed is not None else 'ні'} (під голосом {BED_UNDER_DB} дБ, у паузах {BED_GAP_DB} дБ)")
     track = radio.assemble(parts, used_kinds, opener, closer, stings, bed,
                            assets.get("bed_seamless", True), BED_UNDER_DB, BED_GAP_DB,
-                           JINGLE_GAIN_DB, STING_GAIN_DB, weather_sting=wsting)
+                           JINGLE_GAIN_DB, STING_GAIN_DB, gap_ms=PAUSE_PLAIN_MS, weather_sting=wsting,
+                           pre_ms=PAUSE_BEFORE_MS, post_ms=PAUSE_AFTER_MS)
     radio.export_mp3(track, out_path, MP3_BITRATE)
     return len(track) / radio.SR
 
@@ -693,6 +707,8 @@ async def main() -> None:
         return
     dn, dn_variant = pick_donate(last.get("donate")) if DONATE_ENABLED else (None, None)
     texts, kinds = [intro], ["intro"]
+    if STAY_ENABLED and STAY_LINES:  # після привітання: коротко просимо не перемикатися
+        texts.append(random.choice(STAY_LINES)); kinds.append("stay")
     texts += items; kinds += ["news"] * len(items)
     if wtext:
         texts.append(wtext); kinds.append("weather")
