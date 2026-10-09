@@ -91,7 +91,7 @@ def trim_silence(x: np.ndarray, thresh_db: float = -48, keep_ms: int = 70) -> np
     return x[a:b]
 
 
-def split_by_pauses(x: np.ndarray, parts: int, min_gap_ms: int = 250, edge_ms: int = 600):
+def split_by_pauses(x: np.ndarray, parts: int, min_gap_ms: int = 250, edge_ms: int = 600, min_item_gap_ms: int = 600):
     """Ріже озвучення на `parts` шматків по найдовших паузах. Повертає (шматки, довжини пауз)
     або (None, []) якщо достатньо виразних пауз не знайдено."""
     if parts <= 1:
@@ -113,7 +113,15 @@ def split_by_pauses(x: np.ndarray, parts: int, min_gap_ms: int = 250, edge_ms: i
     gaps = [g for g in gaps if g[0] >= edge_ms and g[1] <= total_ms - edge_ms and g[1] - g[0] >= min_gap_ms]
     if len(gaps) < parts - 1:
         return None, [g[1] - g[0] for g in gaps]
-    best = sorted(sorted(gaps, key=lambda g: g[1] - g[0], reverse=True)[: parts - 1])
+    by_len = sorted(gaps, key=lambda g: g[1] - g[0], reverse=True)
+    chosen, others = by_len[: parts - 1], by_len[parts - 1:]
+    shortest = min(g[1] - g[0] for g in chosen)
+    longest_other = max((g[1] - g[0] for g in others), default=0)
+    # Надійність нарізки: паузи між новинами мають явно відрізнятися від пауз усередині фраз.
+    # Якщо ні — краще вставити перебивки не вдасться, ніж розрізати озвучення посеред речення.
+    if shortest < min_item_gap_ms or (longest_other and shortest < 1.25 * longest_other):
+        return None, [g[1] - g[0] for g in by_len[:parts + 2]]
+    best = sorted(chosen)
     cuts = [((a + b) // 2) * SR // 1000 for a, b in best]
     segs, prev = [], 0
     for c in cuts:
@@ -551,7 +559,8 @@ def _tile(loop: np.ndarray, n: int, seamless: bool) -> np.ndarray:
 
 def assemble(parts, kinds=None, opener=None, closer=None, stingers=None, bed=None,
              bed_seamless=True, bed_under_db=-20.0, bed_gap_db=-12.0,
-             jingle_gain_db=0.0, sting_gain_db=0.0, gap_ms: int = 260, weather_sting=None) -> np.ndarray:
+             jingle_gain_db=0.0, sting_gain_db=0.0, gap_ms: int = 700, weather_sting=None,
+             pre_ms: int = 450, post_ms: int = 250) -> np.ndarray:
     """Зводить випуск у СТЕРЕО (n, 2). Голос — моно, по центру; музика, джингли й фон — стерео."""
     ms = lambda v: int(v * SR / 1000)
     kinds = kinds or ["news"] * len(parts)
@@ -581,9 +590,9 @@ def assemble(parts, kinds=None, opener=None, closer=None, stingers=None, bed=Non
                     choices = [k for k in range(len(stingers)) if k != last] or [0]
                     last = random.choice(choices)
                     st = stingers[last] * _db(sting_gain_db)
-                s0 = end + ms(60)
+                s0 = end + ms(pre_ms)  # тиша після голосу, потім перебивка, потім тиша перед наступною новиною
                 track = _mix(track, st, s0)
-                cursor = max(s0 + int(len(st) * 0.6), s0 + len(st) - ms(320))
+                cursor = s0 + len(st) + ms(post_ms)
             else:
                 cursor = end + ms(gap_ms)
         else:
