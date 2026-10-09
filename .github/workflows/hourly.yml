@@ -14,7 +14,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AIR_PARITY: "0"       # 0 = ефір о парних годинах за Києвом (14:00, 16:00...), 1 = о непарних (13:00, 15:00...)
+  AIR_EVERY: "2"        # ефір раз на N годин: 2 → 12 випусків на добу, 3 → 8, 4 → 6, 6 → 4
+  AIR_OFFSET: "0"       # ефір о годинах за Києвом, для яких (година % AIR_EVERY) == AIR_OFFSET
   PUBLISH_MINUTE: "30"  # о котрій хвилині перед ефіром випуск з'являється в RSS (13:30 для ефіру о 14:00)
 
 jobs:
@@ -27,7 +28,7 @@ jobs:
         run: |
           H=$((10#$(TZ=Europe/Kyiv date +%H)))
           NEXT=$(( (H + 1) % 24 ))
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ $(( NEXT % 2 )) -eq "$AIR_PARITY" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ $(( NEXT % AIR_EVERY )) -eq "$AIR_OFFSET" ]; then
             echo "go=true" >> "$GITHUB_OUTPUT"
           else
             echo "go=false" >> "$GITHUB_OUTPUT"
@@ -38,7 +39,7 @@ jobs:
     needs: check
     if: needs.check.outputs.go == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90   # запас на довгі повтори запитів до Gemini
     steps:
       - uses: actions/checkout@v4
 
