@@ -1,5 +1,4 @@
 telethon
 google-genai
-edge-tts
 numpy
 scipy
