@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Пульт · Кекс ФМ</title>
+<style>
+:root{--bg:#10131a;--card:#181d28;--line:#2a3142;--tx:#e8ecf4;--mut:#8b95ab;--ac:#ff6b3d;--ok:#3ecf8e;--bad:#ff5c5c;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+h1{font-size:18px;margin:0 8px 0 0}h2{font-size:16px;margin:22px 0 8px;color:var(--ac)}h3{font-size:15px;margin:0 0 8px}
+nav{display:flex;gap:6px;flex-wrap:wrap}nav button.on{background:var(--ac);border-color:var(--ac);color:#111}
+main{max-width:760px;margin:0 auto;padding:12px 16px 80px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:10px 0}
+button,.btn{background:#222a3a;color:var(--tx);border:1px solid var(--line);border-radius:9px;padding:8px 13px;font:inherit;cursor:pointer;text-decoration:none}
+button.main{background:var(--ac);border-color:var(--ac);color:#111;font-weight:600}.del{color:var(--bad)}
+input,select,textarea{width:100%;background:#0e1118;color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:8px;font:inherit}
+input[type=checkbox]{width:auto}input[type=range]{padding:0}textarea{min-height:70px}
+label{display:block;margin:10px 0 3px;color:var(--mut);font-size:13px}.chk{display:flex;gap:8px;align-items:center;color:var(--tx);font-size:15px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.mut,small{color:var(--mut)}.ok{color:var(--ok)}.bad{color:var(--bad)}a{color:#6db3ff}audio{width:100%;margin-top:6px}
+.hide{display:none}#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#222a3a;border:1px solid var(--line);padding:10px 16px;border-radius:10px;opacity:0;transition:.25s;max-width:92%;pointer-events:none}
+#toast.show{opacity:1}#toast.bad{border-color:var(--bad)}.val{float:right;color:var(--tx)}
+</style></head><body>
+<header><h1>🎛 Пульт · Кекс ФМ</h1>
+<nav id="nav" class="hide"><button data-t="ov" class="on">Обзор</button><button data-t="st">Настройки</button><button data-t="sd">Звуки</button><button data-t="hp">Помощь</button></nav>
+<span style="flex:1"></span><button id="out" class="hide">Выйти</button></header>
+<main>
+<section id="connect" class="card hide">
+<h3>Подключение к GitHub</h3>
+<p class="mut">Нужен токен доступа (создаётся один раз, шаги на вкладке «Помощь»). Он хранится только в этом браузере и отправляется только на api.github.com.</p>
+<label>Владелец (ваш логин GitHub)</label><input id="own"><label>Репозиторий</label><input id="rep" placeholder="news-podcast">
+<label>Токен (fine-grained, права Contents и Actions: Read and write)</label><input id="tok" type="password" autocomplete="off">
+<p><button class="main" onclick="connect()">Подключиться</button></p></section>
+
+<section id="ov" class="tab"><div class="card"><h3>Управление</h3>
+<button class="main" onclick="run()">▶ Собрать выпуск сейчас</button> <span id="links" class="mut"></span>
+<p class="mut">Выпуск собирается заранее и публикуется в :30 перед эфиром (каждые 2 часа). Время меняется в hourly.yml. Пауза выпусков — в «Настройки → Публикация».</p></div>
+<h2>Последние запуски</h2><div id="runs" class="card"></div>
+<h2>Выпуски</h2><div id="eps"></div></section>
+
+<section id="st" class="tab hide"><div id="form"></div><p><button class="main" onclick="saveCfg()">Сохранить настройки</button>
+<span class="mut"> Вступят в силу со следующего выпуска.</span></p></section>
+
+<section id="sd" class="tab hide"><p class="mut">Загрузите свои звуки (mp3/wav, до 20 МБ). Загруженный файл заменяет звук пакета для этого типа во всех частях суток; если ничего не загружено, играет пакет по времени суток. Файлы попадают в публичный репозиторий — загружайте только то, на что у вас есть права.</p>
+<audio id="player" controls></audio><div id="sounds"></div></section>
+
+<section id="hp" class="tab hide card"><h3>Как получить токен</h3>
+<ol><li>GitHub → ваш аватар → <b>Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token</b>.</li>
+<li>Название любое, срок — до 1 года. <b>Repository access → Only select repositories</b> → выберите репозиторий подкаста.</li>
+<li><b>Permissions → Repository permissions</b>: <b>Contents — Read and write</b> и <b>Actions — Read and write</b>.</li>
+<li>Нажмите <b>Generate token</b>, скопируйте (показывается один раз) и вставьте при подключении.</li></ol>
+<p class="mut">Токен даёт запись только в этот репозиторий. Не вводите его на чужих компьютерах. Если потерян — отзовите на странице токенов GitHub.</p>
+<h3>Как это работает</h3><p class="mut">Панель сохраняет настройки в файл <code>config.json</code> репозитория и кладёт звуки в папку <code>assets/</code>. Бот читает их при каждом выпуске. Расписание (каждые 2 часа) меняется в <code>hourly.yml</code>.</p></section>
+</main><div id="toast"></div>
+<datalist id="voices"><option>Kore<option>Puck<option>Zephyr<option>Aoede<option>Algieba<option>Charon<option>Fenrir<option>Leda<option>Orus<option>Achird<option>Sulafat<option>Gacrux<option>Enceladus</datalist>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LS='kex_panel_v1';let S={token:'',owner:'',repo:'',branch:'main',wf:'hourly.yml'};
+try{Object.assign(S,JSON.parse(localStorage.getItem(LS)||'{}'))}catch(e){}
+const mm=location.hostname.match(/^(.+)\.github\.io$/);
+if(mm&&!S.owner){S.owner=mm[1];S.repo=location.pathname.split('/')[1]||''}
+const persist=()=>localStorage.setItem(LS,JSON.stringify(S));
+const toast=(m,bad)=>{const t=$('#toast');t.textContent=m;t.className=bad?'bad show':'show';clearTimeout(toast.t);toast.t=setTimeout(()=>t.className='',5000)};
+const H=x=>({Authorization:'Bearer '+S.token,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...x});
+const api=async(p,o={})=>{const r=await fetch(`https://api.github.com/repos/${S.owner}/${S.repo}${p}`,{...o,headers:H(o.headers)});
+ if(r.status===404&&o.soft)return null;if(!r.ok)throw new Error(r.status+': '+(await r.text()).slice(0,200));return r.status===204?{}:r.json()};
+const b64=s=>btoa(unescape(encodeURIComponent(s))),unb64=s=>decodeURIComponent(escape(atob(s.replace(/\s/g,''))));
+
+const PK=['neutral_house','deep_house','tech_house','acid_house','classic_trance','uplifting_trance','night_chill'];
+const F=[['Источники и новости',[['channels','Каналы-источники (через запятую, например @kanal1,@kanal2; пусто = секрет TG_CHANNELS)','text',''],
+['news_window_min','Окно новостей, минут (180 = последние 3 часа)','num',180,30,720],
+['dedupe','Не повторять посты, которые уже прозвучали в прошлом выпуске','bool',true],
+['repeat_when_empty','Если нового нет — повторить новости за последние 3 часа (читает следующая ведущая)','bool',true],
+['min_sentences','Минимум предложений в посте','num',1,1,5],['max_posts','Максимум постов за раз','num',40,5,80]]],
+['Ведущие и голос',[
+['station','Название службы новостей (в тексте и описаниях)','text','Служба новин Кекс-радіокомпані'],
+['station_spoken','Как название произносится (большая гласная = ударение)','text','Служба новин кекс рАдіо-кОмпані'],
+['host1_name','Имя ведущей №1','text','Ангеліна'],['host1_voice','Голос №1 (выберите по образцам voice_samples.py; женские: Zephyr, Aoede, Autonoe, Callirrhoe, Kore, Leda…)','voice','Zephyr'],
+['host1_speed','Скорость речи №1 (меньше = медленнее)','rng',0.95,0.8,1.2,0.01,'×'],['host1_pitch','Высота голоса №1 (полутонов; плюс = выше, но при больших значениях голос звучит по-детски)','rng',0,-4,4,0.5,''],
+['host1_style','Манера голоса №1 (по-английски; пусто = встроенная)','area',''],
+['host2_name','Имя ведущей №2','text','Лера'],['host2_voice','Голос №2 (Gemini: ровные — Kore, Sulafat, Achernar)','voice','Kore'],
+['host2_speed','Скорость речи №2 (меньше = медленнее)','rng',0.95,0.8,1.2,0.01,'×'],['host2_pitch','Высота голоса №2 (полутонов; минус = ниже)','rng',0,-4,4,0.5,''],
+['host2_style','Манера голоса №2 (по-английски; пусто = встроенная)','area','']]],
+['Озвучка Gemini (запасного голоса нет)',[
+['tts_models','Модели озвучки по очереди (через запятую, лучшие первыми)','text','gemini-2.5-flash-preview-tts,gemini-2.5-pro-preview-tts'],
+['tts_retry_min','Сколько минут настойчиво стучаться в Gemini (потом повторяется прошлый выпуск)','num',40,5,120],
+['tts_max_attempts','Максимум попыток за выпуск (бережёт квоту)','num',20,3,40]]],
+['Звуковые пакеты по времени суток (по времени эфира)',[['pack_morning','Утро (5:00–11:59)','sel','tech_house',PK],['pack_day','День (12:00–16:59)','sel','neutral_house',PK],
+['pack_evening','Вечер (17:00–21:59)','sel','deep_house',PK],['pack_night','Ночь (22:00–4:59)','sel','night_chill',PK]]],
+['Музыка и звуки',[['bed_enabled','Фоновая музыка под выпуском','bool',true],['bed_under_db','Фон под голосом (дБ относительно голоса; меньше = тише)','rng',-20,-40,-6,1,' дБ'],
+['bed_gap_db','Фон в паузах (дБ)','rng',-12,-30,-3,1,' дБ'],['jingles_enabled','Джинглы и перебивки','bool',true],
+['pause_before_ms','Тишина после новости перед перебивкой, мс','num',450,100,2000],['pause_after_ms','Тишина после перебивки перед следующей новостью, мс','num',250,0,2000],
+['pause_plain_ms','Пауза там, где перебивки нет, мс','num',700,200,3000],
+['jingle_gain_db','Громкость джинглов','rng',0,-12,6,1,' дБ'],['sting_gain_db','Громкость перебивок','rng',0,-12,6,1,' дБ']]],
+['Вставки',[['stay_enabled','После приветствия: «не переключайтесь, новости короткие, скоро снова музыка»','bool',true],
+['stay_lines','Варианты этой фразы (по одному в строке, выбирается случайный)','area','Не перемикайтесь: новини короткі, трохи більше хвилини, і дуже скоро знову буде ваша улюблена музика.\nВипуск короткий, трохи більше хвилини, тож залишайтеся з нами: дуже скоро знову буде ваша улюблена музика.\nЗалишайтеся на хвилинку: новини короткі, а далі знову ваша улюблена музика.\nНовини коротко, трохи більше хвилини. Не перемикайтесь: дуже скоро знову буде ваша улюблена музика.\nНе надовго: трохи більше хвилини новин, а дуже скоро знову прозвучить ваша улюблена музика. Не перемикайтесь.\nПросимо не перемикатися: новини займуть трохи більше хвилини, і дуже скоро знову буде ваша улюблена музика.'],
+['weather_enabled','Погода в конце выпуска','bool',true],['weather_where','Как сказать «в городе» (напр. у Києві)','text','у Києві'],['lat','Широта','num',50.45,-90,90,'any'],['lon','Долгота','num',30.52,-180,180,'any'],
+['weather_lead','Явный вступ к погоде (по одному варианту в строке, выбирается случайный)','area','І про погоду в Києві.\nА тепер про погоду в Києві.\nІ нарешті про погоду в Києві.'],
+['telegram_enabled','В конце выпуска ведущие упоминают телеграм-канал (без слов про сайт)','bool',true],['telegram_name','Название телеграм-канала (как произносится)','text','Кекс-ньюс'],
+['donate_enabled','Призыв поддержать станцию (чередуются «чашечкой кофе» и «трошки фінансово порадувати», адрес не произносится)','bool',true],
+['donate_url','Ссылка на сайт/донат (только на странице подкаста и в описаниях, вслух не произносится)','text','https://keksfm.kiev.ua'],
+['extra_instructions','Доп. указания редактору (стиль, что пропускать)','area','']]],
+['Публикация',[['enabled','Выпуски включены (снимите галочку, чтобы поставить на паузу)','bool',true],['keep_episodes','Сколько выпусков хранить','num',24,2,60],
+['mp3_bitrate','Качество mp3 (стерео; больше = лучше звук, тяжелее файл)','sel','192k',['64k','96k','128k','192k','256k']],
+['feed_title','Название подкаста (тег title в RSS и заголовок сайта)','text','KEXXX NEWS'],
+['feed_desc','Описание подкаста (тег description в RSS)','text','Новини коротко і без хєрні'],
+['feed_email','E-mail владельца в RSS (нужен каталогам для подтверждения)','text','keksfm.kiev@gmail.com'],
+['rss_explicit','Пометка «explicit» в RSS (по умолчанию выключена)','bool',false]]]];
+let CFG={},SHA=null;
+function renderForm(){$('#form').innerHTML=F.map(([g,fs])=>`<h2>${g}</h2><div class="card">`+fs.map(([k,l,t,d,a,b,st,u])=>{const v=CFG[k]??d,id='f_'+k;
+ if(t=='bool')return`<label class="chk"><input type="checkbox" id="${id}" ${v?'checked':''}> ${l}</label>`;
+ let i;if(t=='area')i=`<textarea id="${id}">${esc(v)}</textarea>`;
+ else if(t=='sel')i=`<select id="${id}">${a.map(o=>`<option ${o==v?'selected':''}>${o}</option>`).join('')}</select>`;
+ else if(t=='rng')i=`<input type="range" id="${id}" min="${a}" max="${b}" step="${st}" value="${v}" oninput="this.previousElementSibling.lastChild.textContent=this.value+'${u}'">`;
+ else if(t=='num')i=`<input type="number" id="${id}" value="${v}" min="${a}" max="${b}" step="${st||1}">`;
+ else i=`<input id="${id}" value="${esc(v)}" ${t=='voice'?'list="voices"':''}>`;
+ return`<label>${l}${t=='rng'?`<span class="val">${v}${u}</span>`:''}</label>${i}`}).join('')+'</div>').join('')}
+async function loadCfg(){const r=await api(`/contents/config.json?ref=${S.branch}`,{soft:1});
+ if(r){CFG=JSON.parse(unb64(r.content));SHA=r.sha}else{CFG={};SHA=null}renderForm()}
+async function saveCfg(){const o={};
+ F.forEach(([g,fs])=>fs.forEach(([k,l,t])=>{const e=$('#f_'+k);o[k]=t=='bool'?e.checked:(t=='num'||t=='rng')?Number(e.value):e.value}));
+ try{const r=await api('/contents/config.json',{method:'PUT',body:JSON.stringify({message:'Panel: update config',content:b64(JSON.stringify(o,null,1)),sha:SHA||undefined,branch:S.branch})});
+  SHA=r.content.sha;CFG=o;toast('Сохранено ✓')}catch(e){toast('Не сохранилось: '+e.message,1)}}
+
+const K=[['open','Начало выпуска (джингл)'],['close','Конец выпуска (джингл)'],['sting','Перебивки между новостями'],['weather','Особая перебивка перед погодой'],['bed','Фоновая музыка']];
+async function loadSounds(){const L=(await api(`/contents/assets?ref=${S.branch}`,{soft:1}))||[];
+ $('#sounds').innerHTML=K.map(([k,t])=>{const fs=L.filter(f=>f.name.startsWith(k));
+ return`<div class="card"><h3>${t}</h3>`+(fs.length?fs.map(f=>`<div class="row"><span>${esc(f.name)} <small>${(f.size/1024).toFixed(0)} КБ</small></span><span><button onclick="play('${f.path}')">▶</button> <button class="del" onclick="del('${f.path}','${f.sha}')">✕</button></span></div>`).join(''):'<p class="mut">Ничего не загружено — используется встроенный синтезированный звук.</p>')+
+ `<p><input type="file" id="up_${k}" accept="audio/*" multiple></p><button onclick="up('${k}')">Загрузить</button></div>`}).join('')}
+async function up(k){const fs=[...$('#up_'+k).files];if(!fs.length)return toast('Сначала выберите файл',1);let n=0;
+ for(const f of fs){if(f.size>20e6){toast(f.name+': больше 20 МБ',1);continue}
+  const ext=(f.name.split('.').pop()||'mp3').toLowerCase().replace(/[^a-z0-9]/g,''),name=`${k}_${Date.now().toString(36)}${n++}.${ext}`;
+  const data=await new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result.split(',')[1]);x.readAsDataURL(f)});
+  try{await api('/contents/assets/'+name,{method:'PUT',body:JSON.stringify({message:'Panel: upload '+name,content:data,branch:S.branch})});toast('Загружено: '+f.name)}catch(e){toast(e.message,1)}}
+ loadSounds()}
+async function del(p,sha){if(!confirm('Удалить '+p+'?'))return;
+ try{await api('/contents/'+p,{method:'DELETE',body:JSON.stringify({message:'Panel: delete '+p,sha,branch:S.branch})});loadSounds()}catch(e){toast(e.message,1)}}
+async function play(p){const r=await fetch(`https://api.github.com/repos/${S.owner}/${S.repo}/contents/${p}?ref=${S.branch}`,{headers:H({Accept:'application/vnd.github.raw+json'})});
+ if(!r.ok)return toast('Не удалось загрузить файл',1);const a=$('#player');a.src=URL.createObjectURL(await r.blob());a.play()}
+
+async function loadOv(){
+ try{const r=await api('/actions/runs?per_page=6');$('#runs').innerHTML=r.workflow_runs.map(x=>{const c=x.conclusion=='success'?'ok':x.status=='completed'?'bad':'';
+  return`<div class="row"><span class="${c}">${c=='ok'?'✔':c=='bad'?'✖':'…'} ${new Date(x.created_at).toLocaleString('ru')}</span><a href="${x.html_url}" target="_blank">лог</a></div>`}).join('')||'<span class="mut">Запусков пока нет</span>'}catch(e){$('#runs').textContent=e.message}
+ try{const e=await(await fetch('../episodes.json',{cache:'no-store'})).json();$('#eps').innerHTML=e.slice(0,8).map(x=>`<div class="card"><b>${esc(x.title)}</b><audio controls preload="none" src="../${esc(x.file)}"></audio></div>`).join('')}catch(e){$('#eps').innerHTML='<p class="mut">Выпусков пока нет</p>'}
+ $('#links').innerHTML='<a href="../" target="_blank">Сайт</a> · <a href="../feed.xml" target="_blank">RSS</a>'}
+async function run(){try{await api(`/actions/workflows/${S.wf}/dispatches`,{method:'POST',body:JSON.stringify({ref:S.branch})});toast('Запущено. Выпуск будет готов через несколько минут.');setTimeout(loadOv,8000)}catch(e){toast(e.message,1)}}
+
+function tab(t){$$('.tab').forEach(e=>e.classList.toggle('hide',e.id!=t));$$('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==t));
+ if(t=='ov')loadOv();if(t=='st')loadCfg().catch(e=>toast(e.message,1));if(t=='sd')loadSounds().catch(e=>toast(e.message,1))}
+function view(){const ok=!!S.token;$('#connect').classList.toggle('hide',ok);$('#nav').classList.toggle('hide',!ok);$('#out').classList.toggle('hide',!ok);
+ $$('.tab').forEach(e=>e.classList.add('hide'));$('#own').value=S.owner;$('#rep').value=S.repo;if(ok)tab('ov')}
+async function connect(){S.token=$('#tok').value.trim()||S.token;S.owner=$('#own').value.trim();S.repo=$('#rep').value.trim();
+ try{const r=await api('');S.branch=r.default_branch;persist();view();toast('Подключено: '+r.full_name)}catch(e){S.token='';toast('Не удалось подключиться: '+e.message,1)}}
+$('#out').onclick=()=>{S.token='';persist();view()};
+$$('#nav button').forEach(b=>b.onclick=()=>tab(b.dataset.t));
+view();
+</script></body></html>
